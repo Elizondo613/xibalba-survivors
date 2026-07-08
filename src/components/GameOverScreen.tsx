@@ -1,10 +1,13 @@
-import { Skull, RotateCcw, Trophy, Timer, Gem } from "lucide-react";
+import { Skull, RotateCcw, Trophy, Timer, Gem, Sparkles } from "lucide-react";
 import { useGameStore, gameBridge } from "../store/gameStore";
 
 export default function GameOverScreen() {
   const phase = useGameStore((s) => s.phase);
   const stats = useGameStore((s) => s.finalStats);
   const reset = useGameStore((s) => s.reset);
+  const highScore = useGameStore((s) => s.highScore);
+  const newLevelRecord = useGameStore((s) => s.newLevelRecord);
+  const newTimeRecord = useGameStore((s) => s.newTimeRecord);
 
   if (phase !== "gameover" || !stats) return null;
 
@@ -39,6 +42,24 @@ export default function GameOverScreen() {
         <Stat icon={<Timer className="h-4 w-4" />} label="Tiempo" value={`${minutes}:${seconds}`} />
         <Stat icon={<Trophy className="h-4 w-4" />} label="Nivel" value={String(stats.level)} />
         <Stat icon={<Gem className="h-4 w-4" />} label="Bajas" value={String(stats.kills)} />
+      </div>
+
+      {(newLevelRecord || newTimeRecord) && (
+        <div className="relative flex items-center gap-2 rounded-full border border-gold bg-gold/10 px-4 py-1.5 text-gold-light animate-flicker">
+          <Sparkles className="h-4 w-4" />
+          <span className="font-glyph text-xs font-bold uppercase tracking-wide">
+            ¡Nuevo récord{newLevelRecord && newTimeRecord ? "s" : ""}
+            {newLevelRecord ? " de nivel" : ""}
+            {newLevelRecord && newTimeRecord ? " y" : ""}
+            {newTimeRecord ? " de tiempo" : ""}!
+          </span>
+        </div>
+      )}
+
+      <div className="relative flex items-center gap-4 text-[10px] uppercase tracking-wider text-bone/40">
+        <span>Récord: Nv.{highScore.bestLevel}</span>
+        <span>·</span>
+        <span>Bajas totales: {highScore.totalKills}</span>
       </div>
 
       <div className="relative flex gap-3">

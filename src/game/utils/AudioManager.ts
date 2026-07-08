@@ -203,6 +203,15 @@ class AudioManager {
   pickupXp() {
     this.blip({ freq: 700, slideTo: 1100, dur: 0.1, type: "sine", volume: 0.14 });
   }
+  heal() {
+    // Warm two-note rise — distinct from pickupXp so healing reads
+    // differently at a glance even without looking at the screen.
+    this.blip({ freq: 440, slideTo: 660, dur: 0.16, type: "sine", volume: 0.16 });
+    window.setTimeout(
+      () => this.blip({ freq: 660, slideTo: 880, dur: 0.18, type: "sine", volume: 0.14 }),
+      70
+    );
+  }
   levelUp() {
     [440, 554, 659, 880].forEach((f, i) => {
       window.setTimeout(() => this.blip({ freq: f, dur: 0.25, type: "triangle", volume: 0.18 }), i * 90);

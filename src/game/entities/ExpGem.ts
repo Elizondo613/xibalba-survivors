@@ -1,19 +1,38 @@
 import Phaser from "phaser";
 
+export type PickupKind = "xp" | "life";
+
 export class ExpGem {
   scene: Phaser.Scene;
   sprite: Phaser.Physics.Arcade.Sprite;
   value: number;
+  kind: PickupKind;
   collected = false;
   magnetized = false;
 
-  constructor(scene: Phaser.Scene, x: number, y: number, value: number) {
+    constructor(
+    scene: Phaser.Scene,
+    x: number,
+    y: number,
+    value: number,
+    kind: PickupKind = "xp"
+  ) {
     this.scene = scene;
     this.value = value;
-    this.sprite = scene.physics.add.sprite(x, y, "tex-gem");
-    this.sprite.setScale(value > 8 ? 3 : 2.2);
+    this.kind = kind;
+
+    const texture = kind === "life" ? "tex-lifecross" : "tex-gem";
+    this.sprite = scene.physics.add.sprite(x, y, texture);
     this.sprite.setDepth(4);
-    this.sprite.setTint(value > 8 ? 0xffe08a : 0x9ef2cf);
+
+    if (kind === "life") {
+      this.sprite.setScale(2.4);
+      // no tint override — the cross texture is already fully red
+    } else {
+      this.sprite.setScale(value > 8 ? 3 : 2.2);
+      this.sprite.setTint(value > 8 ? 0xffe08a : 0x9ef2cf);
+    }
+
     scene.tweens.add({
       targets: this.sprite,
       y: this.sprite.y - 4,

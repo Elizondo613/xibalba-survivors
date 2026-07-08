@@ -147,6 +147,15 @@ const CAMAZOTZ_GRID = [
 
 const GEM_GRID = ["..G.", ".GgG", "GggG", ".GGG", "..G."];
 
+const LIFE_CROSS_GRID = [
+  "..RR..",
+  "..rr..",
+  "RRRRRR",
+  "RrrrrR",
+  "..rr..",
+  "..RR..",
+];
+
 // ---------- Projectile / fx grids ----------
 
 const DART_GRID = ["..K.", ".KkK", "KkkK", ".Kk.", "..K."];
@@ -167,6 +176,7 @@ export function generateAllTextures(scene: Phaser.Scene) {
   drawGrid(scene, "tex-sun", SUN_GRID, 5, false);
   drawGrid(scene, "tex-whip", WHIP_GRID, 5, false);
   drawGrid(scene, "tex-shrapnel", SHRAPNEL_GRID, 4, false);
+  drawGrid(scene, "tex-lifecross", LIFE_CROSS_GRID, 4, false);
 
   generateGroundTile(scene);
   generateVignette(scene);

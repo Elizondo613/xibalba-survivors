@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { GamePhase, RunStats, UpgradeOption } from "../game/types";
 import { audioManager } from "../game/utils/AudioManager";
+import { loadHighScore, recordRun, type HighScoreData } from "../game/utils/HighScoreManager";
 
 interface GameStoreState {
   phase: GamePhase;
@@ -19,6 +20,9 @@ interface GameStoreState {
   finalStats: RunStats | null;
   musicOn: boolean;
   sfxOn: boolean;
+  highScore: HighScoreData;
+  newLevelRecord: boolean;
+  newTimeRecord: boolean;
 
   setPhase: (phase: GamePhase) => void;
   setHud: (partial: Partial<GameStoreState>) => void;
@@ -63,23 +67,33 @@ export const useGameStore = create<GameStoreState>((set) => ({
   finalStats: null,
   musicOn: true,
   sfxOn: true,
+  highScore: loadHighScore(),
+  newLevelRecord: false,
+  newTimeRecord: false,
 
   setPhase: (phase) => set({ phase }),
   setHud: (partial) => set(partial),
   setUpgradeOptions: (upgradeOptions) => set({ upgradeOptions }),
   setBoss: (bossActive, bossHp = 0, bossMaxHp = 0) =>
     set({ bossActive, bossHp, bossMaxHp }),
-  endRun: (stats, victory) =>
+  endRun: (stats, victory) => {
+    const { data, newLevelRecord, newTimeRecord } = recordRun(stats);
     set({
       finalStats: stats,
       phase: victory ? "victory" : "gameover",
-    }),
+      highScore: data,
+      newLevelRecord,
+      newTimeRecord,
+    });
+  },
   reset: () =>
     set({
       ...initialHud,
       phase: "menu",
       upgradeOptions: [],
       finalStats: null,
+      newLevelRecord: false,
+      newTimeRecord: false,
     }),
   toggleMusic: () =>
     set((s) => {

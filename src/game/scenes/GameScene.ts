@@ -103,6 +103,10 @@ export class GameScene extends Phaser.Scene {
   // ---------------------------------------------------------------
 
   private beginRun() {
+    // In case a previous run ended while paused (level-up screen,
+    // game over, victory), make sure physics is running again.
+    this.physics.resume();
+
     // Reset entities
     this.enemies.forEach((e) => e.destroy());
     this.enemies.clear();
@@ -156,6 +160,7 @@ export class GameScene extends Phaser.Scene {
   private endRun(victory: boolean) {
     this.running = false;
     this.player.sprite.setVelocity(0, 0);
+    this.physics.pause();
     if (victory) audioManager.victory();
     else audioManager.gameOver();
 
@@ -318,22 +323,27 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateGems() {
-    for (const gem of this.gems) {
-      gem.update(this.player.x, this.player.y, this.player.pickupRadius, this.player.pickupRadius * 3.2);
-      if (gem.collected) {
-        this.gainXp(gem.value);
-        this.cacaoCollected += 1;
-        audioManager.pickupXp();
+      for (const gem of this.gems) {
+        gem.update(this.player.x, this.player.y, this.player.pickupRadius, this.player.pickupRadius * 3.2);
+        if (gem.collected) {
+          if (gem.kind === "life") {
+            this.player.heal(gem.value);
+            audioManager.heal();
+          } else {
+            this.gainXp(gem.value);
+            this.cacaoCollected += 1;
+            audioManager.pickupXp();
+          }
+        }
       }
+      this.gems = this.gems.filter((g) => {
+        if (g.collected) {
+          g.destroy();
+          return false;
+        }
+        return true;
+      });
     }
-    this.gems = this.gems.filter((g) => {
-      if (g.collected) {
-        g.destroy();
-        return false;
-      }
-      return true;
-    });
-  }
 
   private updatePlayerEnemyCollisions() {
     this.enemies.forEach((enemy) => {
@@ -404,11 +414,32 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private readonly LIFE_DROP_CHANCE = 0.2;
+  private readonly LIFE_DROP_MIN_HEAL = 20;
+  private readonly LIFE_DROP_MAX_HEAL = 30;
+
   private killEnemy(id: string, enemy: Enemy) {
     this.kills += 1;
     audioManager.enemyDeath();
+
     const gem = new ExpGem(this, enemy.x, enemy.y, enemy.def.xp);
     this.gems.push(gem);
+
+    // Small chance to also drop a life crystal — skipped when the
+    // player is already topped up so drops aren't wasted visually.
+    const playerNeedsHealing = this.player.hp < this.player.effectiveMaxHp;
+    if (playerNeedsHealing && Math.random() < this.LIFE_DROP_CHANCE) {
+      const healAmount = Phaser.Math.Between(this.LIFE_DROP_MIN_HEAL, this.LIFE_DROP_MAX_HEAL);
+      const lifeCrystal = new ExpGem(
+        this,
+        enemy.x + Phaser.Math.Between(-10, 10),
+        enemy.y + Phaser.Math.Between(-10, 10),
+        healAmount,
+        "life"
+      );
+      this.gems.push(lifeCrystal);
+    }
+
     if (enemy.def.isBoss) {
       useGameStore.getState().setBoss(false);
     }
@@ -435,6 +466,11 @@ export class GameScene extends Phaser.Scene {
    * the player never loses a choice. */
   private triggerLevelUp() {
     this.running = false;
+    // Full pause: enemies stop chasing/attacking, projectiles freeze
+    // mid-air, the player stops moving, and (since updateSpawning()
+    // already lives behind the `!running` early-return in update())
+    // no new enemies spawn either.
+    this.physics.pause();
     this.pendingLevelUps = Math.max(0, this.pendingLevelUps - 1);
     audioManager.levelUp();
     const options = rollUpgradeOptions(this.weaponSystem, this.passiveLevels);
@@ -446,10 +482,13 @@ export class GameScene extends Phaser.Scene {
   private chooseUpgrade(option: UpgradeOption) {
     applyUpgrade(option, this.weaponSystem, this.player, this.passiveLevels);
     if (this.pendingLevelUps > 0) {
+      // Chained level-up (one big XP pickup crossed multiple levels):
+      // stay paused and immediately show the next choice screen.
       this.triggerLevelUp();
       return;
     }
     useGameStore.getState().setPhase("playing");
+    this.physics.resume();
     this.running = true;
     this.syncHud();
   }

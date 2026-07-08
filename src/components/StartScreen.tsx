@@ -1,9 +1,16 @@
 import { useEffect, useState } from "react";
-import { Skull, Music, Volume2, VolumeX, Music2 } from "lucide-react";
+import { Skull, Music, Volume2, VolumeX, Music2, Trophy, Timer, Swords } from "lucide-react";
 import { useGameStore, gameBridge } from "../store/gameStore";
 import { audioManager } from "../game/utils/AudioManager";
 
+function formatBestTime(seconds: number) {
+  const m = Math.floor(seconds / 60).toString().padStart(2, "0");
+  const s = Math.floor(seconds % 60).toString().padStart(2, "0");
+  return `${m}:${s}`;
+}
+
 export default function StartScreen() {
+  const highScore = useGameStore((s) => s.highScore);
   const phase = useGameStore((s) => s.phase);
   const musicOn = useGameStore((s) => s.musicOn);
   const sfxOn = useGameStore((s) => s.sfxOn);
@@ -43,6 +50,28 @@ export default function StartScreen() {
           mientras el poder de los dioses se acumula en tus manos.
         </p>
       </div>
+
+      {(highScore.bestLevel > 0 || highScore.totalKills > 0) && (
+        <div className="relative flex items-center gap-5 rounded-xl border border-gold/30 bg-obsidian-light/50 px-5 py-3">
+          <div className="flex flex-col items-center gap-1">
+            <Trophy className="h-4 w-4 text-gold-light" />
+            <span className="font-pixel text-[10px] text-bone">Nv.{highScore.bestLevel}</span>
+            <span className="text-[9px] uppercase tracking-wider text-bone/50">Récord</span>
+          </div>
+          <div className="flex flex-col items-center gap-1">
+            <Swords className="h-4 w-4 text-blood-light" />
+            <span className="font-pixel text-[10px] text-bone">{highScore.totalKills}</span>
+            <span className="text-[9px] uppercase tracking-wider text-bone/50">Bajas totales</span>
+          </div>
+          <div className="flex flex-col items-center gap-1">
+            <Timer className="h-4 w-4 text-jade-light" />
+            <span className="font-pixel text-[10px] text-bone">
+              {formatBestTime(highScore.bestTimeSurvived)}
+            </span>
+            <span className="text-[9px] uppercase tracking-wider text-bone/50">Mejor tiempo</span>
+          </div>
+        </div>
+      )}
 
       <div className="relative flex flex-col items-center gap-3">
         <button

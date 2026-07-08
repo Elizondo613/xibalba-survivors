@@ -55,7 +55,7 @@ export class Enemy {
     this.sprite.setFlipX(dx < 0);
 
     if (time < this.hitFlashUntil) {
-      this.sprite.setTint(0xffffff);
+      this.sprite.setTintFill(0xffffff);
     } else if (this.def.isBoss) {
       this.sprite.setTint(0xffdca0);
     } else {
