@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { GamePhase, RunStats, UpgradeOption } from "../game/types";
+import type { GameMode, GamePhase, RunStats, UpgradeOption } from "../game/types";
 import { audioManager } from "../game/utils/AudioManager";
 import { loadHighScore, recordRun, type HighScoreData } from "../game/utils/HighScoreManager";
 
@@ -16,34 +16,45 @@ interface GameStoreState {
   bossActive: boolean;
   bossHp: number;
   bossMaxHp: number;
+  bossName: string;
   upgradeOptions: UpgradeOption[];
   finalStats: RunStats | null;
   musicOn: boolean;
   sfxOn: boolean;
+
   highScore: HighScoreData;
   newLevelRecord: boolean;
   newTimeRecord: boolean;
 
+  /** Modo Historia vs Modo Infinito, and which "house" of Xibalba
+   * (index into MAPS) the current story run is on. Infinite mode
+   * ignores mapIndex and always plays MAPS[0] on a loop. */
+  mode: GameMode;
+  mapIndex: number;
+
   setPhase: (phase: GamePhase) => void;
   setHud: (partial: Partial<GameStoreState>) => void;
   setUpgradeOptions: (options: UpgradeOption[]) => void;
-  setBoss: (active: boolean, hp?: number, maxHp?: number) => void;
+  setBoss: (active: boolean, hp?: number, maxHp?: number, name?: string) => void;
   endRun: (stats: RunStats, victory: boolean) => void;
   reset: () => void;
   toggleMusic: () => void;
   toggleSfx: () => void;
+  chooseStoryMode: () => void;
+  chooseInfiniteMode: () => void;
+  setMapIndex: (mapIndex: number) => void;
 }
 
-/** Set by GameCanvas once the Phaser game boots; used by React UI to
- * call back into the running scene (choose upgrade, resume, restart). */
 export const gameBridge: {
   chooseUpgrade: ((option: UpgradeOption) => void) | null;
   restart: (() => void) | null;
   requestStart: (() => void) | null;
+  advanceMap: (() => void) | null;
 } = {
   chooseUpgrade: null,
   restart: null,
   requestStart: null,
+  advanceMap: null,
 };
 
 const initialHud = {
@@ -58,6 +69,7 @@ const initialHud = {
   bossActive: false,
   bossHp: 0,
   bossMaxHp: 0,
+  bossName: "",
 };
 
 export const useGameStore = create<GameStoreState>((set) => ({
@@ -70,12 +82,14 @@ export const useGameStore = create<GameStoreState>((set) => ({
   highScore: loadHighScore(),
   newLevelRecord: false,
   newTimeRecord: false,
+  mode: "story",
+  mapIndex: 0,
 
   setPhase: (phase) => set({ phase }),
   setHud: (partial) => set(partial),
   setUpgradeOptions: (upgradeOptions) => set({ upgradeOptions }),
-  setBoss: (bossActive, bossHp = 0, bossMaxHp = 0) =>
-    set({ bossActive, bossHp, bossMaxHp }),
+  setBoss: (bossActive, bossHp = 0, bossMaxHp = 0, bossName = "") =>
+    set({ bossActive, bossHp, bossMaxHp, bossName }),
   endRun: (stats, victory) => {
     const { data, newLevelRecord, newTimeRecord } = recordRun(stats);
     set({
@@ -107,4 +121,7 @@ export const useGameStore = create<GameStoreState>((set) => ({
       audioManager.setSfxEnabled(next);
       return { sfxOn: next };
     }),
+  chooseStoryMode: () => set({ mode: "story", mapIndex: 0, phase: "story-intro" }),
+  chooseInfiniteMode: () => set({ mode: "infinite", mapIndex: 0 }),
+  setMapIndex: (mapIndex) => set({ mapIndex }),
 }));

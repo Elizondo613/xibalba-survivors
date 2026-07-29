@@ -9,8 +9,12 @@ export class Enemy {
   maxHp: number;
   damage: number;
   speed: number;
+  damageMultiplier: number;
   alive = true;
   hitFlashUntil = 0;
+  /** Timestamp (scene time) at which this enemy's special ability
+   * (skeleton AoE pulse / jaguar ranged shot) is next available. */
+  nextAbilityAt: number;
   /** small per-enemy offset so groups don't perfectly overlap-stack */
   wanderOffset: number;
 
@@ -20,7 +24,8 @@ export class Enemy {
     x: number,
     y: number,
     hpMultiplier: number,
-    speedMultiplier: number
+    speedMultiplier: number,
+    damageMultiplier = 1
   ) {
     this.scene = scene;
     this.def = def;
@@ -34,12 +39,16 @@ export class Enemy {
     );
     this.hp = Math.round(def.hp * hpMultiplier);
     this.maxHp = this.hp;
-    this.damage = def.damage;
+    this.damage = def.damage * damageMultiplier;
+    this.damageMultiplier = damageMultiplier;
     this.speed = def.speed * speedMultiplier;
     this.wanderOffset = Math.random() * Math.PI * 2;
+    this.nextAbilityAt = (def.abilityCooldownMs ?? 0) * Math.random();
 
     if (def.isBoss) {
       this.sprite.setTint(0xffdca0);
+    } else if (def.tint) {
+      this.sprite.setTint(def.tint);
     }
   }
 
@@ -49,18 +58,53 @@ export class Enemy {
     const dy = targetY - this.sprite.y;
     const dist = Math.max(1, Math.hypot(dx, dy));
     const wob = Math.sin(time / 260 + this.wanderOffset) * 0.25;
-    const vx = (dx / dist + wob) * this.speed;
-    const vy = (dy / dist - wob * 0.5) * this.speed;
-    this.sprite.setVelocity(vx, vy);
+    const nx = dx / dist;
+    const ny = dy / dist;
+
+    let dirX: number;
+    let dirY: number;
+
+    if (this.def.preferredRange) {
+      const pref = this.def.preferredRange;
+      if (dist < pref * 0.75) {
+        dirX = -nx;
+        dirY = -ny;
+      } else if (dist > pref * 1.15) {
+        dirX = nx;
+        dirY = ny;
+      } else {
+        dirX = -ny;
+        dirY = nx;
+      }
+    } else {
+      dirX = nx + wob;
+      dirY = ny - wob * 0.5;
+    }
+
+    this.sprite.setVelocity(dirX * this.speed, dirY * this.speed);
     this.sprite.setFlipX(dx < 0);
 
     if (time < this.hitFlashUntil) {
       this.sprite.setTintFill(0xffffff);
     } else if (this.def.isBoss) {
       this.sprite.setTint(0xffdca0);
+    } else if (this.def.tint) {
+      this.sprite.setTint(this.def.tint);
     } else {
       this.sprite.clearTint();
     }
+  }
+
+  canUseAbility(time: number, distanceToPlayer: number): boolean {
+    if (!this.def.ability || !this.alive) return false;
+    if (time < this.nextAbilityAt) return false;
+    const range = this.def.abilityRange ?? Infinity;
+    return distanceToPlayer <= range;
+  }
+
+  useAbility(time: number) {
+    const cooldown = this.def.abilityCooldownMs ?? 1500;
+    this.nextAbilityAt = time + cooldown * (0.9 + Math.random() * 0.2);
   }
 
   takeDamage(amount: number, time: number): boolean {
@@ -68,7 +112,7 @@ export class Enemy {
     this.hitFlashUntil = time + 70;
     if (this.hp <= 0 && this.alive) {
       this.alive = false;
-      return true; // died this hit
+      return true;
     }
     return false;
   }

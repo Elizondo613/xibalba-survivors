@@ -1,5 +1,6 @@
 import { Skull, RotateCcw, Trophy, Timer, Gem, Sparkles } from "lucide-react";
 import { useGameStore, gameBridge } from "../store/gameStore";
+import { MAPS } from "../game/maps";
 
 export default function GameOverScreen() {
   const phase = useGameStore((s) => s.phase);
@@ -8,6 +9,8 @@ export default function GameOverScreen() {
   const highScore = useGameStore((s) => s.highScore);
   const newLevelRecord = useGameStore((s) => s.newLevelRecord);
   const newTimeRecord = useGameStore((s) => s.newTimeRecord);
+  const mode = useGameStore((s) => s.mode);
+  const mapIndex = useGameStore((s) => s.mapIndex);
 
   if (phase !== "gameover" || !stats) return null;
 
@@ -36,6 +39,9 @@ export default function GameOverScreen() {
           Has caído en Xibalba
         </h2>
         <p className="text-sm text-bone/60">El inframundo reclamó otra alma.</p>
+        {mode === "story" && (
+          <p className="text-xs text-bone/40">Caíste en: {MAPS[mapIndex]?.name}</p>
+        )}
       </div>
 
       <div className="relative grid grid-cols-3 gap-4 rounded-xl border border-blood/30 bg-obsidian-light/60 px-6 py-4">

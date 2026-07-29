@@ -2,19 +2,21 @@ import { Heart, Skull, Timer, Gem } from "lucide-react";
 import { useGameStore } from "../store/gameStore";
 import { RUN_DURATION_SECONDS } from "../game/config";
 
-function formatTime(totalSeconds: number) {
+function formatCountdown(totalSeconds: number) {
   const remaining = Math.max(0, RUN_DURATION_SECONDS - totalSeconds);
-  const m = Math.floor(remaining / 60)
-    .toString()
-    .padStart(2, "0");
-  const s = Math.floor(remaining % 60)
-    .toString()
-    .padStart(2, "0");
+  const m = Math.floor(remaining / 60).toString().padStart(2, "0");
+  const s = Math.floor(remaining % 60).toString().padStart(2, "0");
+  return `${m}:${s}`;
+}
+
+function formatCountUp(totalSeconds: number) {
+  const m = Math.floor(totalSeconds / 60).toString().padStart(2, "0");
+  const s = Math.floor(totalSeconds % 60).toString().padStart(2, "0");
   return `${m}:${s}`;
 }
 
 export default function HUD() {
-  const { hp, maxHp, level, xp, xpToNext, timeSurvived, kills, bossActive, bossHp, bossMaxHp } =
+  const { hp, maxHp, level, xp, xpToNext, timeSurvived, kills, bossActive, bossHp, bossMaxHp, bossName, mode } =
     useGameStore();
 
   const hpPct = Math.max(0, Math.min(100, (hp / maxHp) * 100));
@@ -24,7 +26,6 @@ export default function HUD() {
   return (
     <div className="pointer-events-none fixed inset-x-0 top-0 z-30 flex flex-col items-center gap-2 p-3 sm:p-4">
       <div className="flex w-full max-w-2xl items-center gap-3">
-        {/* HP */}
         <div className="flex flex-1 items-center gap-2 rounded-lg border border-blood/60 bg-obsidian/70 px-3 py-1.5 shadow-lg backdrop-blur-sm">
           <Heart className="h-4 w-4 shrink-0 text-blood-light" fill="currentColor" />
           <div className="relative h-3 flex-1 overflow-hidden rounded-full bg-obsidian-dark">
@@ -38,18 +39,16 @@ export default function HUD() {
           </span>
         </div>
 
-        {/* Timer */}
         <div className="flex items-center gap-1.5 rounded-lg border border-gold/60 bg-obsidian/70 px-3 py-1.5 shadow-lg backdrop-blur-sm">
           <Timer className="h-4 w-4 text-gold-light" />
-          <span className="font-pixel text-[10px] text-gold-light">{formatTime(timeSurvived)}</span>
+          <span className="font-pixel text-[10px] text-gold-light">
+            {mode === "infinite" ? formatCountUp(timeSurvived) : formatCountdown(timeSurvived)}
+          </span>
         </div>
       </div>
 
-      {/* XP / Level */}
       <div className="flex w-full max-w-2xl items-center gap-2">
-        <span className="font-glyph text-xs font-bold tracking-wide text-jade-light">
-          Nv.{level}
-        </span>
+        <span className="font-glyph text-xs font-bold tracking-wide text-jade-light">Nv.{level}</span>
         <div className="relative h-2.5 flex-1 overflow-hidden rounded-full border border-jade-dark/60 bg-obsidian-dark">
           <div
             className="h-full bg-gradient-to-r from-jade-dark via-jade to-jade-light transition-all duration-200"
@@ -67,11 +66,10 @@ export default function HUD() {
         </span>
       </div>
 
-      {/* Boss bar */}
       {bossActive && (
         <div className="mt-1 flex w-full max-w-md flex-col items-center gap-1 animate-flicker">
           <span className="font-glyph text-xs font-bold uppercase tracking-[0.2em] text-blood-light text-stroke">
-            Camazotz, Señor Murciélago
+            {bossName}
           </span>
           <div className="relative h-3 w-full overflow-hidden rounded-full border border-blood/70 bg-obsidian-dark">
             <div

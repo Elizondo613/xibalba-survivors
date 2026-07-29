@@ -1,5 +1,12 @@
 import { Crown, RotateCcw, Trophy, Timer, Skull, Sparkles } from "lucide-react";
 import { useGameStore, gameBridge } from "../store/gameStore";
+import { MAPS } from "../game/maps";
+
+function formatTime(totalSeconds: number) {
+  const m = Math.floor(totalSeconds / 60).toString().padStart(2, "0");
+  const s = Math.floor(totalSeconds % 60).toString().padStart(2, "0");
+  return `${m}:${s}`;
+}
 
 export default function VictoryScreen() {
   const phase = useGameStore((s) => s.phase);
@@ -8,8 +15,16 @@ export default function VictoryScreen() {
   const highScore = useGameStore((s) => s.highScore);
   const newLevelRecord = useGameStore((s) => s.newLevelRecord);
   const newTimeRecord = useGameStore((s) => s.newTimeRecord);
+  const mapIndex = useGameStore((s) => s.mapIndex);
 
   if (phase !== "victory" || !stats) return null;
+
+  // Pulled dynamically so this screen stays correct as more maps get
+  // added later — right now map 2 is the last one, so its
+  // "continuará" narrative shows here instead of on a zone-clear
+  // screen. Once map 3 exists, this automatically becomes whatever
+  // the new final map's text is.
+  const finalMap = MAPS[mapIndex] ?? MAPS[MAPS.length - 1];
 
   const handleRetry = () => {
     gameBridge.restart?.();
@@ -26,13 +41,13 @@ export default function VictoryScreen() {
       <div className="relative flex flex-col items-center gap-2">
         <Crown className="h-12 w-12 text-gold-light animate-flicker" />
         <h2 className="font-glyph text-3xl font-black uppercase tracking-[0.15em] text-gold-light sm:text-5xl">
-          Escapaste de Xibalba
+          {finalMap.name}: superada
         </h2>
-        <p className="text-sm text-bone/60">Los dioses del inframundo reconocen tu fuerza.</p>
+        <p className="max-w-lg font-glyph text-sm leading-relaxed text-bone/70">{finalMap.clearText}</p>
       </div>
 
       <div className="relative grid grid-cols-3 gap-4 rounded-xl border border-gold/30 bg-obsidian-light/60 px-6 py-4">
-        <Stat icon={<Timer className="h-4 w-4" />} label="Tiempo" value="05:00" />
+        <Stat icon={<Timer className="h-4 w-4" />} label="Tiempo" value={formatTime(stats.timeSurvived)} />
         <Stat icon={<Trophy className="h-4 w-4" />} label="Nivel" value={String(stats.level)} />
         <Stat icon={<Skull className="h-4 w-4" />} label="Bajas" value={String(stats.kills)} />
       </div>

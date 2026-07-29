@@ -1,33 +1,52 @@
-import type { EnemyKind } from "../types";
-import { difficultyAt } from "../config";
+import type { EnemyKind, GameMode } from "../types";
+import {
+  difficultyAt,
+  ELITE_SPAWN_WEIGHT,
+  INFINITE_BOSS_INTERVAL_SECONDS,
+  INFINITE_BOSS_TIER_STEP,
+  SPAWN_CAPS,
+  SPAWN_WEIGHTS,
+} from "../config";
 
 export interface SpawnRequest {
   kind: EnemyKind;
   x: number;
   y: number;
+  hpMult?: number;
+  dmgMult?: number;
 }
 
-const SPAWN_MARGIN = 60; // spawn just outside the camera view
+const SPAWN_MARGIN = 60;
+const REGULAR_KINDS: ("bat" | "skeleton" | "jaguar")[] = ["bat", "skeleton", "jaguar"];
 
 export class SpawnSystem {
   private nextSpawnAt = 800;
-  private bossSpawned = false;
+  private bossSpawnCount = 0;
 
-  /** Weighted enemy pool that shifts toward tougher foes over time. */
-  private pickKind(elapsedSeconds: number): EnemyKind {
-    const minutes = elapsedSeconds / 60;
-    const roll = Math.random();
-    if (minutes < 0.5) {
-      return roll < 0.85 ? "bat" : "skeleton";
+  constructor(
+    private bossKind: EnemyKind,
+    private mode: GameMode,
+    private eliteKind?: EnemyKind
+  ) {}
+
+  private pickKind(aliveCounts: Record<EnemyKind, number>): EnemyKind {
+    const pool: { kind: EnemyKind; weight: number }[] = REGULAR_KINDS.filter(
+      (k) => aliveCounts[k] < SPAWN_CAPS[k]
+    ).map((k) => ({ kind: k, weight: SPAWN_WEIGHTS[k] }));
+
+    if (this.eliteKind && aliveCounts[this.eliteKind] < SPAWN_CAPS[this.eliteKind]) {
+      pool.push({ kind: this.eliteKind, weight: ELITE_SPAWN_WEIGHT });
     }
-    if (minutes < 1.5) {
-      if (roll < 0.55) return "bat";
-      if (roll < 0.85) return "skeleton";
-      return "jaguar";
+
+    if (pool.length === 0) return "bat";
+
+    const totalWeight = pool.reduce((sum, p) => sum + p.weight, 0);
+    let roll = Math.random() * totalWeight;
+    for (const p of pool) {
+      roll -= p.weight;
+      if (roll <= 0) return p.kind;
     }
-    if (roll < 0.4) return "bat";
-    if (roll < 0.7) return "skeleton";
-    return "jaguar";
+    return pool[pool.length - 1].kind;
   }
 
   update(
@@ -36,20 +55,27 @@ export class SpawnSystem {
     playerX: number,
     playerY: number,
     viewWidth: number,
-    viewHeight: number
+    viewHeight: number,
+    aliveCounts: Record<EnemyKind, number>
   ): SpawnRequest[] {
     const requests: SpawnRequest[] = [];
 
-    // Boss arrives once, ~4 minutes in, as the climactic threat before
-    // the 5-minute survive-and-win line.
-    if (!this.bossSpawned && elapsedSeconds >= 240) {
-      this.bossSpawned = true;
+    const bossDue =
+      this.mode === "infinite"
+        ? elapsedSeconds >= (this.bossSpawnCount + 1) * INFINITE_BOSS_INTERVAL_SECONDS
+        : this.bossSpawnCount === 0 && elapsedSeconds >= 240;
+
+    if (bossDue && aliveCounts[this.bossKind] < SPAWN_CAPS[this.bossKind]) {
+      this.bossSpawnCount += 1;
+      const tier = this.mode === "infinite" ? (this.bossSpawnCount - 1) * INFINITE_BOSS_TIER_STEP : 0;
       const angle = Math.random() * Math.PI * 2;
       const dist = viewWidth * 0.6;
       requests.push({
-        kind: "camazotz",
+        kind: this.bossKind,
         x: playerX + Math.cos(angle) * dist,
         y: playerY + Math.sin(angle) * dist,
+        hpMult: 1 + tier,
+        dmgMult: 1 + tier * 0.6,
       });
     }
 
@@ -58,12 +84,17 @@ export class SpawnSystem {
     const diff = difficultyAt(elapsedSeconds);
     this.nextSpawnAt = timeMs + diff.spawnIntervalMs;
 
+    const runningCounts = { ...aliveCounts };
+
     const count = diff.enemiesPerWave;
     for (let i = 0; i < count; i++) {
+      const kind = this.pickKind(runningCounts);
+      runningCounts[kind] += 1;
+
       const angle = Math.random() * Math.PI * 2;
       const edgeDist = Math.max(viewWidth, viewHeight) / 2 + SPAWN_MARGIN;
       requests.push({
-        kind: this.pickKind(elapsedSeconds),
+        kind,
         x: playerX + Math.cos(angle) * edgeDist,
         y: playerY + Math.sin(angle) * edgeDist,
       });

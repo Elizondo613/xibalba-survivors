@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Skull, Music, Volume2, VolumeX, Music2, Trophy, Timer, Swords } from "lucide-react";
+import { Skull, Music, Volume2, VolumeX, Music2, Trophy, Timer, Swords, BookOpen, Infinity as InfinityIcon } from "lucide-react";
 import { useGameStore, gameBridge } from "../store/gameStore";
 import { audioManager } from "../game/utils/AudioManager";
 
@@ -10,12 +10,14 @@ function formatBestTime(seconds: number) {
 }
 
 export default function StartScreen() {
-  const highScore = useGameStore((s) => s.highScore);
   const phase = useGameStore((s) => s.phase);
   const musicOn = useGameStore((s) => s.musicOn);
   const sfxOn = useGameStore((s) => s.sfxOn);
   const toggleMusic = useGameStore((s) => s.toggleMusic);
   const toggleSfx = useGameStore((s) => s.toggleSfx);
+  const highScore = useGameStore((s) => s.highScore);
+  const chooseStoryMode = useGameStore((s) => s.chooseStoryMode);
+  const chooseInfiniteMode = useGameStore((s) => s.chooseInfiniteMode);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -30,8 +32,17 @@ export default function StartScreen() {
 
   if (phase !== "menu") return null;
 
-  const handleStart = () => {
+  const handleStoryMode = () => {
     audioManager.unlock();
+    // Story mode shows the narrative intro first; StoryIntroScreen is
+    // the one that actually calls gameBridge.requestStart() once the
+    // player finishes reading it.
+    chooseStoryMode();
+  };
+
+  const handleInfiniteMode = () => {
+    audioManager.unlock();
+    chooseInfiniteMode();
     gameBridge.requestStart?.();
   };
 
@@ -74,13 +85,28 @@ export default function StartScreen() {
       )}
 
       <div className="relative flex flex-col items-center gap-3">
-        <button
-          onClick={handleStart}
-          disabled={!ready}
-          className="rounded-lg border-2 border-gold bg-gradient-to-b from-jade to-jade-dark px-8 py-3 font-glyph text-lg font-bold uppercase tracking-widest text-bone shadow-glow transition-transform hover:scale-105 active:scale-95 disabled:cursor-wait disabled:opacity-50"
-        >
-          {ready ? "Comenzar" : "Despertando a Xibalba…"}
-        </button>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <button
+            onClick={handleStoryMode}
+            disabled={!ready}
+            className="flex items-center justify-center gap-2 rounded-lg border-2 border-gold bg-gradient-to-b from-jade to-jade-dark px-8 py-3 font-glyph text-lg font-bold uppercase tracking-widest text-bone shadow-glow transition-transform hover:scale-105 active:scale-95 disabled:cursor-wait disabled:opacity-50"
+          >
+            <BookOpen className="h-5 w-5" />
+            {ready ? "Modo Historia" : "Despertando a Xibalba…"}
+          </button>
+          <button
+            onClick={handleInfiniteMode}
+            disabled={!ready}
+            className="flex items-center justify-center gap-2 rounded-lg border-2 border-blood bg-gradient-to-b from-blood to-blood-dark px-8 py-3 font-glyph text-lg font-bold uppercase tracking-widest text-bone shadow-lg transition-transform hover:scale-105 active:scale-95 disabled:cursor-wait disabled:opacity-50"
+          >
+            <InfinityIcon className="h-5 w-5" />
+            Modo Infinito
+          </button>
+        </div>
+        <p className="max-w-sm text-[11px] text-bone/40">
+          Historia: recorre las casas de Xibalba con una narrativa. Infinito: sobrevive todo lo que
+          puedas — cada pocos minutos llega un jefe más fuerte que el anterior.
+        </p>
 
         <div className="flex gap-3 text-bone/60">
           <button

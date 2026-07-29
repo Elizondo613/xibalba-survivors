@@ -7,10 +7,11 @@ import { SpawnSystem } from "../systems/SpawnSystem";
 import { WeaponSystem, type WeaponContext } from "../systems/WeaponSystem";
 import { rollUpgradeOptions, applyUpgrade, type PassiveLevels } from "../systems/UpgradeSystem";
 import { ENEMY_DEFS, RUN_DURATION_SECONDS, WORLD_SIZE, difficultyAt, xpToNextLevel } from "../config";
+import { MAPS, isFinalMap } from "../maps";
 import { audioManager } from "../utils/AudioManager";
 import { touchInputState } from "../utils/InputState";
 import { useGameStore, gameBridge } from "../../store/gameStore";
-import type { UpgradeOption } from "../types";
+import type { EnemyKind, GameMode, UpgradeOption } from "../types";
 
 let idCounter = 0;
 const nextId = () => `e${idCounter++}`;
@@ -21,14 +22,21 @@ export class GameScene extends Phaser.Scene {
   private projectiles: Projectile[] = [];
   private gems: ExpGem[] = [];
   private weaponSystem = new WeaponSystem();
-  private spawnSystem = new SpawnSystem();
+  private spawnSystem = new SpawnSystem("camazotz", "story");
   private passiveLevels: PassiveLevels = {};
 
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
 
   private running = false;
+  private mode: GameMode = "story";
+  private mapIndex = 0;
+  private difficultyTier = 1;
   private elapsedSeconds = 0;
+  /** Cumulative time across every map in a story run (elapsedSeconds
+   * resets each map for the per-map 5-minute timer; this doesn't —
+   * it's what actually gets recorded as the run's timeSurvived). */
+  private totalElapsedSeconds = 0;
   private level = 1;
   private xp = 0;
   private kills = 0;
@@ -81,6 +89,7 @@ export class GameScene extends Phaser.Scene {
     gameBridge.chooseUpgrade = (option) => this.chooseUpgrade(option);
     gameBridge.restart = () => this.beginRun();
     gameBridge.requestStart = () => this.beginRun();
+    gameBridge.advanceMap = () => this.advanceToNextMap();
 
     this.running = false;
   }
@@ -103,11 +112,8 @@ export class GameScene extends Phaser.Scene {
   // ---------------------------------------------------------------
 
   private beginRun() {
-    // In case a previous run ended while paused (level-up screen,
-    // game over, victory), make sure physics is running again.
     this.physics.resume();
 
-    // Reset entities
     this.enemies.forEach((e) => e.destroy());
     this.enemies.clear();
     this.projectiles.forEach((p) => p.destroy());
@@ -115,9 +121,18 @@ export class GameScene extends Phaser.Scene {
     this.gems.forEach((g) => g.destroy());
     this.gems = [];
 
+    // A fresh run (whether from the menu or after dying) always starts
+    // a story campaign over at map 0. Modo Infinito ignores mapIndex
+    // entirely and always plays MAPS[0]'s enemy pool.
+    this.mode = useGameStore.getState().mode;
+    this.mapIndex = 0;
+    useGameStore.getState().setMapIndex(0);
+    const map = MAPS[this.mapIndex];
+    this.difficultyTier = map.difficultyTier;
+    this.spawnSystem = new SpawnSystem(map.bossKind, this.mode, map.eliteKind);
+
     this.weaponSystem = new WeaponSystem();
     this.weaponSystem.addOrUpgrade("obsidianDart");
-    this.spawnSystem = new SpawnSystem();
     this.passiveLevels = {};
 
     this.player.mods = {
@@ -134,6 +149,7 @@ export class GameScene extends Phaser.Scene {
     this.player.lastHitAt = -9999;
 
     this.elapsedSeconds = 0;
+    this.totalElapsedSeconds = 0;
     this.level = 1;
     this.xp = 0;
     this.kills = 0;
@@ -157,6 +173,37 @@ export class GameScene extends Phaser.Scene {
     audioManager.unlock();
   }
 
+  /** Modo Historia only: advances to the next "house" of Xibalba
+   * without resetting the player's build, level, or kill count — only
+   * the arena (enemies/projectiles/gems) and the per-map 5-minute
+   * timer reset. Called from the zone-clear screen's "Continuar". */
+  private advanceToNextMap() {
+    this.physics.resume();
+
+    this.enemies.forEach((e) => e.destroy());
+    this.enemies.clear();
+    this.projectiles.forEach((p) => p.destroy());
+    this.projectiles = [];
+    this.gems.forEach((g) => g.destroy());
+    this.gems = [];
+
+    this.mapIndex += 1;
+    useGameStore.getState().setMapIndex(this.mapIndex);
+    const map = MAPS[this.mapIndex];
+    this.difficultyTier = map.difficultyTier;
+    this.spawnSystem = new SpawnSystem(map.bossKind, this.mode, map.eliteKind);
+
+    this.elapsedSeconds = 0;
+    // Small grace heal between houses of Xibalba — carrying near-zero
+    // HP straight into a harder map would feel unfair.
+    this.player.heal(30);
+
+    this.running = true;
+    useGameStore.getState().setBoss(false);
+    useGameStore.getState().setPhase("playing");
+    this.syncHud();
+  }
+
   private endRun(victory: boolean) {
     this.running = false;
     this.player.sprite.setVelocity(0, 0);
@@ -166,13 +213,22 @@ export class GameScene extends Phaser.Scene {
 
     useGameStore.getState().endRun(
       {
-        timeSurvived: this.elapsedSeconds,
+        timeSurvived: this.totalElapsedSeconds,
         level: this.level,
         kills: this.kills,
         cacaoCollected: this.cacaoCollected,
       },
       victory
     );
+  }
+
+  /** Story mode only, reached a non-final map's 5-minute mark: pause
+   * and show the zone-clear screen instead of ending the run. */
+  private triggerZoneClear() {
+    this.running = false;
+    this.physics.pause();
+    audioManager.victory();
+    useGameStore.getState().setPhase("zone-clear");
   }
 
   // ---------------------------------------------------------------
@@ -186,12 +242,14 @@ export class GameScene extends Phaser.Scene {
     this.updateWeapons(time, delta);
     this.updateSpawning(time);
     this.updateEnemies(time);
+    this.updateEnemyAbilities(time);
     this.updateProjectiles(time);
     this.updateOrbitCollisions(time);
     this.updateGems();
     this.updatePlayerEnemyCollisions();
 
     this.elapsedSeconds += delta / 1000;
+    this.totalElapsedSeconds += delta / 1000;
     this.hudAccumulator += delta;
     if (this.hudAccumulator > 120) {
       this.hudAccumulator = 0;
@@ -203,8 +261,17 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    // Modo Infinito has no time-based win condition — it only ends on
+    // death, and difficulty (including recurring bosses) just keeps
+    // climbing via SpawnSystem/difficultyAt.
+    if (this.mode === "infinite") return;
+
     if (this.elapsedSeconds >= RUN_DURATION_SECONDS) {
-      this.endRun(true);
+      if (isFinalMap(this.mapIndex)) {
+        this.endRun(true);
+      } else {
+        this.triggerZoneClear();
+      }
     }
   }
 
@@ -249,30 +316,47 @@ export class GameScene extends Phaser.Scene {
 
   private updateSpawning(time: number) {
     const view = this.cameras.main.worldView;
+    const aliveCounts = this.countAliveByKind();
     const requests = this.spawnSystem.update(
       time,
       this.elapsedSeconds,
       this.player.x,
       this.player.y,
       view.width,
-      view.height
+      view.height,
+      aliveCounts
     );
     const diff = difficultyAt(this.elapsedSeconds);
     for (const req of requests) {
       const def = ENEMY_DEFS[req.kind];
-      const enemy = new Enemy(
-        this,
-        def,
-        req.x,
-        req.y,
-        def.isBoss ? 1 : diff.hpMultiplier,
-        def.isBoss ? 1 : diff.speedMultiplier
-      );
+      // Story maps get harder floors via difficultyTier (set per map
+      // in maps.ts); Modo Infinito's recurring bosses get progressively
+      // stronger via req.hpMult/dmgMult from SpawnSystem instead.
+      const hpMult = def.isBoss ? (req.hpMult ?? 1) : diff.hpMultiplier * this.difficultyTier;
+      const speedMult = def.isBoss ? 1 : diff.speedMultiplier;
+      const dmgMult = def.isBoss ? (req.dmgMult ?? 1) : this.difficultyTier;
+
+      const enemy = new Enemy(this, def, req.x, req.y, hpMult, speedMult, dmgMult);
       this.enemies.set(nextId(), enemy);
       if (def.isBoss) {
-        useGameStore.getState().setBoss(true, enemy.hp, enemy.maxHp);
+        useGameStore.getState().setBoss(true, enemy.hp, enemy.maxHp, def.name);
       }
     }
+  }
+
+  private countAliveByKind(): Record<EnemyKind, number> {
+    const counts: Record<EnemyKind, number> = {
+      bat: 0,
+      skeleton: 0,
+      jaguar: 0,
+      camazotz: 0,
+      boneWarrior: 0,
+      jaguarLord: 0,
+    };
+    this.enemies.forEach((enemy) => {
+      if (enemy.alive) counts[enemy.def.kind] += 1;
+    });
+    return counts;
   }
 
   private updateEnemies(time: number) {
@@ -281,10 +365,65 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  /** Skeletons pulse a telegraphed AoE around themselves; jaguars (and
+   * the map-2 boss, in a 3-shard burst) fire straight (non-homing)
+   * shards at the player's current position. Both are on a per-enemy
+   * cooldown gated by canUseAbility(). */
+  private updateEnemyAbilities(time: number) {
+    this.enemies.forEach((enemy) => {
+      if (!enemy.alive || !enemy.def.ability) return;
+
+      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, enemy.x, enemy.y);
+      if (!enemy.canUseAbility(time, dist)) return;
+
+      const abilityDamage = (enemy.def.abilityDamage ?? 10) * enemy.damageMultiplier;
+
+      if (enemy.def.ability === "aoePulse") {
+        this.player.takeDamage(abilityDamage);
+        audioManager.playerHurt();
+        this.flashAoe(enemy.x, enemy.y, enemy.def.abilityRange ?? 70, 0x9e2b25);
+      } else if (enemy.def.ability === "rangedLinear") {
+        const baseAngle = Phaser.Math.Angle.Between(enemy.x, enemy.y, this.player.x, this.player.y);
+        const speed = enemy.def.projectileSpeed ?? 260;
+        const shots = enemy.def.abilityProjectileCount ?? 1;
+        for (let i = 0; i < shots; i++) {
+          const spread = shots > 1 ? (i - (shots - 1) / 2) * 0.16 : 0;
+          const angle = baseAngle + spread;
+          this.projectiles.push(
+            new Projectile(this, {
+              x: enemy.x,
+              y: enemy.y,
+              vx: Math.cos(angle) * speed,
+              vy: Math.sin(angle) * speed,
+              damage: abilityDamage,
+              texture: "tex-jaguarspike",
+              scale: enemy.def.isBoss ? 3 : 2.4,
+              source: "enemy",
+              lifetimeMs: 2200,
+            })
+          );
+        }
+        audioManager.shoot();
+      }
+
+      enemy.useAbility(time);
+    });
+  }
+
   private updateProjectiles(time: number) {
     for (const proj of this.projectiles) {
       proj.update(time);
       if (!proj.alive) continue;
+
+      if (proj.source === "enemy") {
+        const dist = Phaser.Math.Distance.Between(proj.x, proj.y, this.player.x, this.player.y);
+        if (dist < 16 && proj.registerPlayerHit()) {
+          const applied = this.player.takeDamage(proj.damage);
+          if (applied) audioManager.playerHurt();
+        }
+        continue;
+      }
+
       this.enemies.forEach((enemy, id) => {
         if (!enemy.alive || !proj.alive) return;
         const dist = Phaser.Math.Distance.Between(proj.x, proj.y, enemy.x, enemy.y);
@@ -323,27 +462,27 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateGems() {
-      for (const gem of this.gems) {
-        gem.update(this.player.x, this.player.y, this.player.pickupRadius, this.player.pickupRadius * 3.2);
-        if (gem.collected) {
-          if (gem.kind === "life") {
-            this.player.heal(gem.value);
-            audioManager.heal();
-          } else {
-            this.gainXp(gem.value);
-            this.cacaoCollected += 1;
-            audioManager.pickupXp();
-          }
+    for (const gem of this.gems) {
+      gem.update(this.player.x, this.player.y, this.player.pickupRadius, this.player.pickupRadius * 3.2);
+      if (gem.collected) {
+        if (gem.kind === "life") {
+          this.player.heal(gem.value);
+          audioManager.heal();
+        } else {
+          this.gainXp(gem.value);
+          this.cacaoCollected += 1;
+          audioManager.pickupXp();
         }
       }
-      this.gems = this.gems.filter((g) => {
-        if (g.collected) {
-          g.destroy();
-          return false;
-        }
-        return true;
-      });
     }
+    this.gems = this.gems.filter((g) => {
+      if (g.collected) {
+        g.destroy();
+        return false;
+      }
+      return true;
+    });
+  }
 
   private updatePlayerEnemyCollisions() {
     this.enemies.forEach((enemy) => {
@@ -425,8 +564,6 @@ export class GameScene extends Phaser.Scene {
     const gem = new ExpGem(this, enemy.x, enemy.y, enemy.def.xp);
     this.gems.push(gem);
 
-    // Small chance to also drop a life crystal — skipped when the
-    // player is already topped up so drops aren't wasted visually.
     const playerNeedsHealing = this.player.hp < this.player.effectiveMaxHp;
     if (playerNeedsHealing && Math.random() < this.LIFE_DROP_CHANCE) {
       const healAmount = Phaser.Math.Between(this.LIFE_DROP_MIN_HEAL, this.LIFE_DROP_MAX_HEAL);
@@ -461,15 +598,8 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  /** Shows one upgrade-choice screen. If a single XP pickup crossed more
-   * than one level, additional screens are chained after each pick so
-   * the player never loses a choice. */
   private triggerLevelUp() {
     this.running = false;
-    // Full pause: enemies stop chasing/attacking, projectiles freeze
-    // mid-air, the player stops moving, and (since updateSpawning()
-    // already lives behind the `!running` early-return in update())
-    // no new enemies spawn either.
     this.physics.pause();
     this.pendingLevelUps = Math.max(0, this.pendingLevelUps - 1);
     audioManager.levelUp();
@@ -482,8 +612,6 @@ export class GameScene extends Phaser.Scene {
   private chooseUpgrade(option: UpgradeOption) {
     applyUpgrade(option, this.weaponSystem, this.player, this.passiveLevels);
     if (this.pendingLevelUps > 0) {
-      // Chained level-up (one big XP pickup crossed multiple levels):
-      // stay paused and immediately show the next choice screen.
       this.triggerLevelUp();
       return;
     }
@@ -506,7 +634,7 @@ export class GameScene extends Phaser.Scene {
       cacaoCollected: this.cacaoCollected,
     });
     if (bossEnemy) {
-      useGameStore.getState().setBoss(true, Math.round(bossEnemy.hp), bossEnemy.maxHp);
+      useGameStore.getState().setBoss(true, Math.round(bossEnemy.hp), bossEnemy.maxHp, bossEnemy.def.name);
     }
   }
 
@@ -531,14 +659,7 @@ export class GameScene extends Phaser.Scene {
     color: number
   ) {
     this.fxLayer.fillStyle(color, 0.35);
-    this.fxLayer.slice(
-      x,
-      y,
-      range,
-      dirAngle - halfAngle,
-      dirAngle + halfAngle,
-      false
-    );
+    this.fxLayer.slice(x, y, range, dirAngle - halfAngle, dirAngle + halfAngle, false);
     this.fxLayer.fillPath();
     this.time.delayedCall(90, () => this.fxLayer.clear());
   }

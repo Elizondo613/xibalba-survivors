@@ -145,6 +145,22 @@ const CAMAZOTZ_GRID = [
   "................",
 ];
 
+const JAGUAR_LORD_GRID = [
+  "....P......P....",
+  "...PPp....pPP...",
+  "..PPppp..pppPP..",
+  ".PpEpppPPpppEpP.",
+  ".PppppPppPppppP.",
+  ".PPPPPPPPPPPPPP.",
+  "RPPPPPPPPPPPPPPR",
+  "RRPPPPPPPPPPPPRR",
+  ".RRRRRRRRRRRRRR.",
+  "..RR.RRRRRR.RR..",
+  "...R..RRRR..R...",
+  "...K...KK...K...",
+  "................",
+];
+
 const GEM_GRID = ["..G.", ".GgG", "GggG", ".GGG", "..G."];
 
 const LIFE_CROSS_GRID = [
@@ -163,6 +179,7 @@ const ORB_GRID = [".jj.", "jJJj", "jJJj", ".jj."];
 const SUN_GRID = ["..Y..", ".YOY.", "YOoOY", ".YOY.", "..Y.."];
 const WHIP_GRID = [".GG.", "GggG", ".GG."];
 const SHRAPNEL_GRID = [".W.", "WwW", ".W."];
+const JAGUAR_SPIKE_GRID = [".P.", "PpP", "PpP", ".P."];
 
 export function generateAllTextures(scene: Phaser.Scene) {
   drawGrid(scene, "tex-player", PLAYER_GRID, 4);
@@ -170,12 +187,14 @@ export function generateAllTextures(scene: Phaser.Scene) {
   drawGrid(scene, "tex-jaguar", JAGUAR_GRID, 4);
   drawGrid(scene, "tex-skeleton", SKELETON_GRID, 4);
   drawGrid(scene, "tex-camazotz", CAMAZOTZ_GRID, 5);
+  drawGrid(scene, "tex-jaguarlord", JAGUAR_LORD_GRID, 5);
   drawGrid(scene, "tex-gem", GEM_GRID, 4, false);
   drawGrid(scene, "tex-dart", DART_GRID, 4, false);
   drawGrid(scene, "tex-orb", ORB_GRID, 4, false);
   drawGrid(scene, "tex-sun", SUN_GRID, 5, false);
   drawGrid(scene, "tex-whip", WHIP_GRID, 5, false);
   drawGrid(scene, "tex-shrapnel", SHRAPNEL_GRID, 4, false);
+  drawGrid(scene, "tex-jaguarspike", JAGUAR_SPIKE_GRID, 5, false);
   drawGrid(scene, "tex-lifecross", LIFE_CROSS_GRID, 4, false);
 
   generateGroundTile(scene);

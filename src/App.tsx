@@ -3,6 +3,8 @@ import HUD from "./components/HUD";
 import VirtualJoystick from "./components/VirtualJoystick";
 import UpgradeModal from "./components/UpgradeModal";
 import StartScreen from "./components/StartScreen";
+import StoryIntroScreen from "./components/StoryIntroScreen";
+import ZoneClearScreen from "./components/ZoneClearScreen";
 import GameOverScreen from "./components/GameOverScreen";
 import VictoryScreen from "./components/VictoryScreen";
 import { useGameStore } from "./store/gameStore";
@@ -20,6 +22,8 @@ export default function App() {
 
       <UpgradeModal />
       <StartScreen />
+      <StoryIntroScreen />
+      <ZoneClearScreen />
       <GameOverScreen />
       <VictoryScreen />
     </div>

@@ -11,15 +11,23 @@ export interface ProjectileOptions {
   pierce?: number;
   lifetimeMs?: number;
   rotate?: boolean;
+  /** Who fired it — determines what it can hit in GameScene's
+   * collision checks. Defaults to "player" to match every existing
+   * call site (WeaponSystem darts/shrapnel). */
+  source?: "player" | "enemy";
 }
 
-/** A simple straight-line moving projectile (obsidian darts, bone shrapnel). */
+/** A simple straight-line moving projectile (obsidian darts, bone
+ * shrapnel, and — since `source` was added — enemy ranged attacks
+ * like the jaguar's shard). */
 export class Projectile {
   scene: Phaser.Scene;
   sprite: Phaser.Physics.Arcade.Sprite;
   damage: number;
   pierce: number;
+  source: "player" | "enemy";
   hitEnemyIds = new Set<string>();
+  hitPlayer = false;
   born: number;
   lifetimeMs: number;
   alive = true;
@@ -35,6 +43,7 @@ export class Projectile {
     }
     this.damage = opts.damage;
     this.pierce = opts.pierce ?? 0;
+    this.source = opts.source ?? "player";
     this.born = scene.time.now;
     this.lifetimeMs = opts.lifetimeMs ?? 1400;
   }
@@ -51,6 +60,14 @@ export class Projectile {
     if (this.hitEnemyIds.size > this.pierce) {
       this.alive = false;
     }
+    return true;
+  }
+
+  /** Enemy projectiles hit the player once, then despawn — no pierce. */
+  registerPlayerHit(): boolean {
+    if (this.hitPlayer) return false;
+    this.hitPlayer = true;
+    this.alive = false;
     return true;
   }
 
