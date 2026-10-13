@@ -6,10 +6,20 @@ export type EnemyKind =
   | "boneWarrior"
   | "jaguarLord"
   | "obsidianDancer"
-  | "ahaltocob";
+  | "ahaltocob"
+  | "ahaltocob"
+  | "frostWraith"
+  | "chamiabac";
 
 /** A special attack an enemy kind can use besides plain contact damage. */
-export type EnemyAbility = "aoePulse" | "rangedLinear" | "bladeRing";
+export type EnemyAbility = "aoePulse" | "rangedLinear" | "bladeRing" | "groundBurst";
+
+/** Periodically calls reinforcements around the enemy (bosses). */
+export interface SummonConfig {
+  kind: EnemyKind;
+  count: number;
+  cooldownMs: number;
+}
 
 /** Telegraphed charge: the enemy stops, flashes red while a warning
  * line shows its path, then rushes in a STRAIGHT line toward where the
@@ -60,6 +70,15 @@ export interface EnemyDef {
   /** Bosses only: below this fraction of max HP (e.g. 0.5) the enemy
    * enters "furia" — faster, shorter cooldowns, more projectiles. */
   enrageAtHpPct?: number;
+  
+  /** groundBurst only: radius of each frost eruption. */
+  burstRadius?: number;
+  /** groundBurst only: warning time before the eruption detonates. */
+  burstDelayMs?: number;
+  /** If set, getting hit by this enemy's ability slows the player
+   * for this many ms. */
+  abilitySlowMs?: number;
+  summon?: SummonConfig;
 }
 
 export type WeaponId =
@@ -92,9 +111,11 @@ export interface PassiveDef {
   maxLevel: number;
 }
 
+export type BonusId = "balcheElixir" | "itzamnaBlessing" | "copalOffering";
+
 export interface UpgradeOption {
-  type: "weapon" | "passive";
-  id: WeaponId | PassiveId;
+  type: "weapon" | "passive" | "bonus";
+  id: WeaponId | PassiveId | BonusId;
   name: string;
   description: string;
   icon: string;

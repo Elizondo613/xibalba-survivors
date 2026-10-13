@@ -3,7 +3,7 @@ import type { EnemyDef } from "../types";
 
 /** Furia (boss phase 2) tuning. */
 const ENRAGE_SPEED_MULT = 1.3;
-const ENRAGE_COOLDOWN_MULT = 0.65;
+export const ENRAGE_COOLDOWN_MULT = 0.65;
 
 export type DashState = "idle" | "windup" | "dashing";
 
@@ -33,6 +33,9 @@ export class Enemy {
    * the dash dodgeable: it won't track the player once it's aimed. */
   dashDirX = 0;
   dashDirY = 0;
+
+  /** Next time this enemy may summon reinforcements (def.summon). */
+  nextSummonAt: number;
 
   // --- Furia (phase 2) ---
   enraged = false;
@@ -69,6 +72,7 @@ export class Enemy {
       ? scene.time.now + def.dash.cooldownMs * (0.4 + Math.random() * 0.6)
       : Infinity;
 
+    this.nextSummonAt = def.summon ? scene.time.now + def.summon.cooldownMs * 0.5 : Infinity;
     this.applyTint(0);
   }
 

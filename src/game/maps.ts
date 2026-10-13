@@ -36,7 +36,17 @@ export const MAPS: MapDef[] = [
     eliteKind: "obsidianDancer",
     groundTexture: "tex-ground-navajas",
     clearText:
-      "Ahaltocob cae entre sus propias navajas. Por primera vez, Yax cree escuchar un paso suave a sus espaldas — o quizá es solo el eco. No voltea. Más adelante, el aliento de la Casa del Frío ya le congela los huesos. Continuará.",
+      "Ahaltocob cae entre sus propias navajas. Por primera vez, Yax cree escuchar un paso suave a sus espaldas — o quizá es solo el eco. No voltea. Más adelante, el aliento de la Casa del Frío ya le congela los huesos.",
+  },
+    {
+    id: "casa-frio",
+    name: "Casa del Frío",
+    bossKind: "chamiabac",
+    difficultyTier: 2.05,
+    eliteKind: "frostWraith",
+    groundTexture: "tex-ground-frio",
+    clearText:
+      "Chamiabac se quiebra como hielo viejo. En el silencio blanco, Yax escucha con claridad una respiración detrás de él — tan cerca que siente su calor en la nuca. Quiere voltear. No lo hace. Adelante, un resplandor rojo ilumina el camino: la Casa del Fuego. Continuará.",
   },
 ];
 

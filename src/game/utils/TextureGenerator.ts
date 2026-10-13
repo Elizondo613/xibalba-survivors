@@ -32,6 +32,8 @@ const PALETTE: Record<string, string> = {
   E: "#2E86AB", // eye cyan glow
   X: "#3B4048", // slate / dark steel
   x: "#A9B6C4", // blade steel glint
+  I: "#9FD8FF", // ice light
+  i: "#4A7FA8", // ice dark
 };
 
 function mirrorRows(halfRows: string[]): string[] {
@@ -195,6 +197,38 @@ const AHALTOCOB_GRID = [
   "................",
 ];
 
+const FROST_WRAITH_GRID = [
+  "............",
+  "....iiii....",
+  "...iIIIIi...",
+  "..iIEIIEIi..",
+  "..iIIIIIIi..",
+  ".iiIIwwIIii.",
+  ".iIIIIIIIIi.",
+  "..iIIIIIIi..",
+  "..iIiIIiIi..",
+  "...i.ii.i...",
+  "..i..i...i..",
+  "............",
+];
+
+const CHAMIABAC_GRID = [
+  "...I..I..I..I...",
+  "...II.II.II.I...",
+  "..iIIIIIIIIIIi..",
+  "..iWWWWWWWWWWi..",
+  "I.WWKEWWWWEKWW..",
+  "II.WWWWKKWWWW...",
+  "I.iWWKWKKWKWWi..",
+  "G.iiWWWWWWWWii..",
+  "GIiiIIWWWWIIii..",
+  "GIiIIiWWWWiIIIi.",
+  "G.iIIiWWWWiIIi..",
+  "G..iiWW..WWii...",
+  "G...WW....WW....",
+  "G...KK....KK....",
+];
+
 const GEM_GRID = ["..G.", ".GgG", "GggG", ".GGG", "..G."];
 
 const LIFE_CROSS_GRID = [
@@ -227,6 +261,8 @@ export function generateAllTextures(scene: Phaser.Scene) {
   drawGrid(scene, "tex-dancer", OBSIDIAN_DANCER_GRID, 4);
   drawGrid(scene, "tex-ahaltocob", AHALTOCOB_GRID, 5);
   drawGrid(scene, "tex-blade", BLADE_GRID, 4);
+  drawGrid(scene, "tex-wraith", FROST_WRAITH_GRID, 4);
+  drawGrid(scene, "tex-chamiabac", CHAMIABAC_GRID, 5);
   drawGrid(scene, "tex-gem", GEM_GRID, 4, false);
   drawGrid(scene, "tex-dart", DART_GRID, 4, false);
   drawGrid(scene, "tex-orb", ORB_GRID, 4, false);
@@ -321,6 +357,36 @@ const GROUND_STYLES: Record<string, GroundStyle> = {
         ctx.lineTo(x + rng.between(8, 16), y + rng.between(-2, 2));
         ctx.stroke();
       }
+    },
+  },
+    // Casa del Frío: frozen blue-gray stone with frost cracks and snow.
+  "tex-ground-frio": {
+    base: "#0E1419",
+    line: "#1E2C36",
+    specks: ["#16212A", "#1B2833"],
+    decorate: (ctx, rng, size) => {
+      ctx.strokeStyle = "rgba(159, 216, 255, 0.45)";
+      ctx.lineWidth = 1;
+      for (let n = 0; n < 2; n++) {
+        let x = rng.between(6, size - 20);
+        let y = rng.between(6, size - 20);
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        for (let k = 0; k < 3; k++) {
+          x += rng.between(3, 7);
+          y += rng.between(-4, 6);
+          ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+      ctx.fillStyle = "rgba(232, 244, 255, 0.35)";
+      for (let i = 0; i < 8; i++) {
+        ctx.fillRect(rng.between(0, size - 2), rng.between(0, size - 2), 2, 2);
+      }
+      ctx.fillStyle = "rgba(74, 127, 168, 0.12)";
+      ctx.beginPath();
+      ctx.ellipse(rng.between(16, size - 16), rng.between(16, size - 16), 9, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
     },
   },
 };

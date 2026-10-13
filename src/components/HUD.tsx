@@ -1,4 +1,4 @@
-import { Heart, Skull, Timer, Gem } from "lucide-react";
+import { Heart, Skull, Timer, Gem, TriangleAlert } from "lucide-react";
 import { useGameStore } from "../store/gameStore";
 import { RUN_DURATION_SECONDS } from "../game/config";
 
@@ -16,7 +16,7 @@ function formatCountUp(totalSeconds: number) {
 }
 
 export default function HUD() {
-  const { hp, maxHp, level, xp, xpToNext, timeSurvived, kills, bossActive, bossHp, bossMaxHp, bossName, mode } =
+  const { hp, maxHp, level, xp, xpToNext, timeSurvived, kills, bossActive, bossHp, bossMaxHp, bossName, mode, cheatsActive } =
     useGameStore();
 
   const hpPct = Math.max(0, Math.min(100, (hp / maxHp) * 100));
@@ -65,6 +65,13 @@ export default function HUD() {
           <Gem className="h-3.5 w-3.5 text-jade-light" /> {level}
         </span>
       </div>
+
+      {cheatsActive && (
+        <div className="flex items-center gap-1.5 rounded-full border border-blood-light/70 bg-blood-dark/80 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-bone shadow-lg">
+          <TriangleAlert className="h-3.5 w-3.5 text-gold-light" />
+          Trucos activos — los récords no se guardarán
+        </div>
+      )}
 
       {bossActive && (
         <div className="mt-1 flex w-full max-w-md flex-col items-center gap-1 animate-flicker">

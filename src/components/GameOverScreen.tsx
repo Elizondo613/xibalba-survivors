@@ -8,6 +8,7 @@ export default function GameOverScreen() {
   const reset = useGameStore((s) => s.reset);
   const highScore = useGameStore((s) => s.highScore);
   const newLevelRecord = useGameStore((s) => s.newLevelRecord);
+  const cheatsActive = useGameStore((s) => s.cheatsActive);
   const newTimeRecord = useGameStore((s) => s.newTimeRecord);
   const mode = useGameStore((s) => s.mode);
   const mapIndex = useGameStore((s) => s.mapIndex);
@@ -62,6 +63,11 @@ export default function GameOverScreen() {
         </div>
       )}
 
+      {cheatsActive && (
+        <p className="relative text-xs font-bold uppercase tracking-wider text-blood-light">
+          Partida con trucos — este récord no se guardó
+        </p>
+      )}
       <div className="relative flex items-center gap-4 text-[10px] uppercase tracking-wider text-bone/40">
         <span>Récord: Nv.{highScore.bestLevel}</span>
         <span>·</span>

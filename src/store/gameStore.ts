@@ -31,6 +31,9 @@ interface GameStoreState {
    * ignores mapIndex and always plays MAPS[0] on a loop. */
   mode: GameMode;
   mapIndex: number;
+  /** True once any console cheat was used this run — the HUD shows a
+   * warning and endRun() skips saving records. */
+  cheatsActive: boolean;
 
   setPhase: (phase: GamePhase) => void;
   setHud: (partial: Partial<GameStoreState>) => void;
@@ -43,6 +46,7 @@ interface GameStoreState {
   chooseStoryMode: () => void;
   chooseInfiniteMode: () => void;
   setMapIndex: (mapIndex: number) => void;
+  setCheatsActive: (on: boolean) => void;
 }
 
 export const gameBridge: {
@@ -72,7 +76,7 @@ const initialHud = {
   bossName: "",
 };
 
-export const useGameStore = create<GameStoreState>((set) => ({
+export const useGameStore = create<GameStoreState>((set, get) => ({
   phase: "menu",
   ...initialHud,
   upgradeOptions: [],
@@ -84,6 +88,7 @@ export const useGameStore = create<GameStoreState>((set) => ({
   newTimeRecord: false,
   mode: "story",
   mapIndex: 0,
+  cheatsActive: false,
 
   setPhase: (phase) => set({ phase }),
   setHud: (partial) => set(partial),
@@ -91,6 +96,16 @@ export const useGameStore = create<GameStoreState>((set) => ({
   setBoss: (bossActive, bossHp = 0, bossMaxHp = 0, bossName = "") =>
     set({ bossActive, bossHp, bossMaxHp, bossName }),
   endRun: (stats, victory) => {
+    // Runs where cheats were used never touch the saved records.
+    if (get().cheatsActive) {
+      set({
+        finalStats: stats,
+        phase: victory ? "victory" : "gameover",
+        newLevelRecord: false,
+        newTimeRecord: false,
+      });
+      return;
+    }
     const { data, newLevelRecord, newTimeRecord } = recordRun(stats);
     set({
       finalStats: stats,
@@ -124,4 +139,5 @@ export const useGameStore = create<GameStoreState>((set) => ({
   chooseStoryMode: () => set({ mode: "story", mapIndex: 0, phase: "story-intro" }),
   chooseInfiniteMode: () => set({ mode: "infinite", mapIndex: 0 }),
   setMapIndex: (mapIndex) => set({ mapIndex }),
+  setCheatsActive: (cheatsActive) => set({ cheatsActive }),
 }));

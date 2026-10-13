@@ -1,17 +1,53 @@
 import Phaser from "phaser";
 import { Player } from "../entities/Player";
-import { Enemy } from "../entities/Enemy";
+import { Enemy, ENRAGE_COOLDOWN_MULT } from "../entities/Enemy";
 import { Projectile } from "../entities/Projectile";
 import { ExpGem } from "../entities/ExpGem";
 import { SpawnSystem } from "../systems/SpawnSystem";
 import { WeaponSystem, type WeaponContext } from "../systems/WeaponSystem";
 import { rollUpgradeOptions, applyUpgrade, type PassiveLevels } from "../systems/UpgradeSystem";
-import { ENEMY_DEFS, RUN_DURATION_SECONDS, WORLD_SIZE, difficultyAt, xpToNextLevel } from "../config";
+import {
+  ENEMY_DEFS,
+  PASSIVE_DEFS,
+  RUN_DURATION_SECONDS,
+  SPAWN_CAPS,
+  WEAPON_DEFS,
+  WORLD_SIZE,
+  difficultyAt,
+  xpToNextLevel,
+} from "../config";
 import { MAPS, isFinalMap } from "../maps";
 import { audioManager } from "../utils/AudioManager";
 import { touchInputState } from "../utils/InputState";
 import { useGameStore, gameBridge } from "../../store/gameStore";
 import type { EnemyKind, GameMode, UpgradeOption } from "../types";
+
+/** A frost eruption waiting to go off (Casa del Frío). */
+interface FrostHazard {
+  x: number;
+  y: number;
+  radius: number;
+  armedAt: number;
+  detonateAt: number;
+  damage: number;
+  slowMs: number;
+}
+
+/** Dev/test commands, only exposed in `npm run dev` (see installDevTools). */
+interface XibalbaDevTools {
+  help: () => void;
+  warp: (house: number, fullLoadout?: boolean) => void;
+  full: () => void;
+  god: () => void;
+  boss: () => void;
+  clear: () => void;
+}
+
+declare global {
+  interface Window {
+    xibalba?: XibalbaDevTools;
+  }
+}
 
 let idCounter = 0;
 const nextId = () => `e${idCounter++}`;
@@ -51,6 +87,9 @@ export class GameScene extends Phaser.Scene {
   private ground!: Phaser.GameObjects.TileSprite;
   /** Redrawn every frame: warning lines for enemies about to dash. */
   private telegraphLayer!: Phaser.GameObjects.Graphics;
+  private hazards: FrostHazard[] = [];
+  /** Any console cheat used this run → records are not saved. */
+  private cheatsUsed = false;
 
   constructor() {
     super("GameScene");
@@ -98,6 +137,10 @@ export class GameScene extends Phaser.Scene {
     gameBridge.requestStart = () => this.beginRun();
     gameBridge.advanceMap = () => this.advanceToNextMap();
 
+    // Doom-style cheats, available to anyone who opens the browser
+    // console (F12) — both in `npm run dev` and in the published build.
+    this.installDevTools();
+
     this.running = false;
   }
 
@@ -120,6 +163,11 @@ export class GameScene extends Phaser.Scene {
 
   private beginRun() {
     this.physics.resume();
+    
+    // A new run starts clean — unless god mode is still switched on,
+    // which would make that run a cheated one from the first second.
+    this.cheatsUsed = this.player.godMode;
+    useGameStore.getState().setCheatsActive(this.cheatsUsed);
 
     this.enemies.forEach((e) => e.destroy());
     this.enemies.clear();
@@ -140,6 +188,7 @@ export class GameScene extends Phaser.Scene {
 
     this.ground.setTexture(map.groundTexture);
     this.telegraphLayer.clear();
+    this.hazards = [];
 
     this.weaponSystem = new WeaponSystem();
     this.weaponSystem.addOrUpgrade("obsidianDart");
@@ -157,6 +206,7 @@ export class GameScene extends Phaser.Scene {
     this.player.sprite.setPosition(WORLD_SIZE / 2, WORLD_SIZE / 2);
     this.player.sprite.setScale(2.4);
     this.player.lastHitAt = -9999;
+    this.player.slowUntil = 0;
 
     this.elapsedSeconds = 0;
     this.totalElapsedSeconds = 0;
@@ -205,7 +255,7 @@ export class GameScene extends Phaser.Scene {
 
     this.ground.setTexture(map.groundTexture);
     this.telegraphLayer.clear();
-
+    this.hazards = [];
     this.elapsedSeconds = 0;
     // Small grace heal between houses of Xibalba — carrying near-zero
     // HP straight into a harder map would feel unfair.
@@ -256,7 +306,9 @@ export class GameScene extends Phaser.Scene {
     this.updateSpawning(time);
     this.updateEnemies(time);
     this.drawDashTelegraphs(time);
+    this.updateHazards(time);
     this.updateEnemyAbilities(time);
+    this.updateSummons(time);
     this.updateProjectiles(time);
     this.updateOrbitCollisions(time);
     this.updateGems();
@@ -466,6 +518,25 @@ export class GameScene extends Phaser.Scene {
         }
         this.flashAoe(enemy.x, enemy.y, 50, 0xa9b6c4);
         audioManager.shoot();
+      } else if (enemy.def.ability === "groundBurst") {
+        // Frost erupts under the player after a visible warning. The
+        // first one targets you exactly; extra ones (bosses / furia)
+        // land around you to cut off escape routes.
+        const zones = (enemy.def.abilityProjectileCount ?? 1) + (enemy.enraged ? 2 : 0);
+        const delay = (enemy.def.burstDelayMs ?? 900) * (enemy.enraged ? 0.8 : 1);
+        for (let i = 0; i < zones; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const offset = i === 0 ? 0 : Phaser.Math.Between(70, 150);
+          this.hazards.push({
+            x: this.player.x + Math.cos(angle) * offset,
+            y: this.player.y + Math.sin(angle) * offset,
+            radius: enemy.def.burstRadius ?? 60,
+            armedAt: time,
+            detonateAt: time + delay,
+            damage: abilityDamage,
+            slowMs: enemy.def.abilitySlowMs ?? 0,
+          });
+        }
       }
 
       enemy.useAbility(time);
@@ -557,6 +628,159 @@ export class GameScene extends Phaser.Scene {
         if (applied) audioManager.playerHurt();
       }
     });
+  }
+
+    /** Draws pending frost eruptions (after drawDashTelegraphs cleared
+   * the layer) and detonates the ones whose time is up. */
+  private updateHazards(time: number) {
+    if (this.hazards.length === 0) return;
+    const remaining: FrostHazard[] = [];
+
+    for (const h of this.hazards) {
+      if (time < h.detonateAt) {
+        const progress = (time - h.armedAt) / (h.detonateAt - h.armedAt);
+        this.telegraphLayer.fillStyle(0x9fd8ff, 0.06 + 0.22 * progress);
+        this.telegraphLayer.fillCircle(h.x, h.y, h.radius);
+        this.telegraphLayer.lineStyle(2, 0x9fd8ff, 0.5 + 0.4 * Math.sin(time / 50));
+        this.telegraphLayer.strokeCircle(h.x, h.y, h.radius);
+        // Inner ring grows toward the edge = countdown.
+        this.telegraphLayer.strokeCircle(h.x, h.y, h.radius * progress);
+        remaining.push(h);
+        continue;
+      }
+
+      this.flashAoe(h.x, h.y, h.radius, 0x9fd8ff);
+      const dist = Phaser.Math.Distance.Between(h.x, h.y, this.player.x, this.player.y);
+      if (dist < h.radius + 10) {
+        const applied = this.player.takeDamage(h.damage);
+        if (applied) {
+          audioManager.playerHurt();
+          if (h.slowMs > 0) this.player.applySlow(h.slowMs);
+        }
+      }
+    }
+
+    this.hazards = remaining;
+  }
+
+  /** Bosses with def.summon call reinforcements on a cooldown (one
+   * extra each time while in furia), never exceeding SPAWN_CAPS. */
+  private updateSummons(time: number) {
+    const counts = this.countAliveByKind();
+    const diff = difficultyAt(this.elapsedSeconds);
+
+    this.enemies.forEach((enemy) => {
+      const summon = enemy.def.summon;
+      if (!enemy.alive || !summon || time < enemy.nextSummonAt) return;
+      enemy.nextSummonAt = time + summon.cooldownMs * (enemy.enraged ? ENRAGE_COOLDOWN_MULT : 1);
+
+      const wanted = summon.count + (enemy.enraged ? 1 : 0);
+      const free = Math.max(0, SPAWN_CAPS[summon.kind] - counts[summon.kind]);
+      const n = Math.min(wanted, free);
+      const def = ENEMY_DEFS[summon.kind];
+
+      for (let i = 0; i < n; i++) {
+        const angle = (i / Math.max(1, n)) * Math.PI * 2;
+        const minion = new Enemy(
+          this,
+          def,
+          enemy.x + Math.cos(angle) * 70,
+          enemy.y + Math.sin(angle) * 70,
+          diff.hpMultiplier * this.difficultyTier,
+          diff.speedMultiplier,
+          this.difficultyTier
+        );
+        this.enemies.set(nextId(), minion);
+        counts[summon.kind] += 1;
+      }
+      if (n > 0) this.flashAoe(enemy.x, enemy.y, 90, 0x9fd8ff);
+    });
+  }
+
+  // Cheats (browser console, anyone can use them) — type `xibalba.help()`
+  // ---------------------------------------------------------------
+
+  private installDevTools() {
+    const tools: XibalbaDevTools = {
+      help: () => {
+        console.info(
+          [
+            "xibalba.warp(n)       → salta a la casa n (1-" + MAPS.length + ") con todo al máximo",
+            "xibalba.warp(n, false) → salta a la casa n con el equipo inicial",
+            "xibalba.full()        → todas las armas y pasivas al máximo",
+            "xibalba.god()         → activa/desactiva invencibilidad",
+            "xibalba.boss()        → adelanta el reloj para que salga el jefe",
+            "xibalba.clear()       → termina la casa actual",
+          ].join("\n")
+        );
+      },
+      warp: (house, fullLoadout = true) => this.devWarp(house, fullLoadout),
+      full: () => {
+        this.markCheatsUsed();
+        this.devMaxLoadout();
+      },
+      god: () => {
+        this.markCheatsUsed();
+        this.player.godMode = !this.player.godMode;
+        console.info(`[xibalba] Modo dios: ${this.player.godMode ? "ON" : "OFF"}`);
+      },
+      boss: () => {
+        this.markCheatsUsed();
+        this.elapsedSeconds = Math.max(this.elapsedSeconds, 238);
+      },
+      clear: () => {
+        this.markCheatsUsed();
+        this.elapsedSeconds = RUN_DURATION_SECONDS;
+      },
+    };
+    window.xibalba = tools;
+    console.info("[xibalba] Herramientas de prueba activas. Escribe xibalba.help()");
+  }
+
+  /** Flags the current run as cheated: HUD warning on, records off. */
+  private markCheatsUsed() {
+    if (!this.cheatsUsed) {
+      console.warn("[xibalba] Trucos activados: los récords de esta partida no se guardarán.");
+    }
+    this.cheatsUsed = true;
+    useGameStore.getState().setCheatsActive(true);
+  }
+
+  /** Starts a fresh Modo Historia run directly on house `house` (1-based). */
+  private devWarp(house: number, fullLoadout: boolean) {
+    const target = Phaser.Math.Clamp(Math.floor(house) - 1, 0, MAPS.length - 1);
+    useGameStore.setState({ mode: "story" });
+    this.beginRun();
+    // After beginRun(), which resets the flag for normal new runs.
+    this.markCheatsUsed();
+    if (fullLoadout) this.devMaxLoadout();
+    if (target > 0) {
+      // advanceToNextMap() increments mapIndex, so park it one before.
+      this.mapIndex = target - 1;
+      this.advanceToNextMap();
+    }
+    console.info(`[xibalba] Casa ${target + 1}: ${MAPS[target].name}`);
+  }
+
+  /** Doom-style "give all": every weapon and passive at max level. */
+  private devMaxLoadout() {
+    for (const def of Object.values(WEAPON_DEFS)) {
+      while (this.weaponSystem.level(def.id) < def.maxLevel) {
+        this.weaponSystem.addOrUpgrade(def.id);
+      }
+    }
+    for (const def of Object.values(PASSIVE_DEFS)) {
+      while ((this.passiveLevels[def.id] ?? 0) < def.maxLevel) {
+        applyUpgrade(
+          { type: "passive", id: def.id, name: def.name, description: def.description, icon: def.icon, isNew: false, nextLevel: 0 },
+          this.weaponSystem,
+          this.player,
+          this.passiveLevels
+        );
+      }
+    }
+    this.player.hp = this.player.effectiveMaxHp;
+    this.syncHud();
   }
 
   // ---------------------------------------------------------------

@@ -151,6 +151,54 @@ export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
     },
     enrageAtHpPct: 0.5,
   },
+    frostWraith: {
+    kind: "frostWraith",
+    name: "Espectro de Escarcha",
+    texture: "tex-wraith",
+    // Next step up from the Danzante (46 HP / 15 dmg). Keeps its
+    // distance and makes frost erupt UNDER the player — stand still and
+    // you get hit and slowed.
+    hp: 60,
+    speed: 70,
+    damage: 17,
+    xp: 15,
+    scale: 2.6,
+    radius: 13,
+    preferredRange: 240,
+    ability: "groundBurst",
+    abilityCooldownMs: 3400,
+    abilityRange: 380,
+    abilityDamage: 18,
+    abilityProjectileCount: 1,
+    burstRadius: 60,
+    burstDelayMs: 900,
+    abilitySlowMs: 1500,
+  },
+  chamiabac: {
+    kind: "chamiabac",
+    name: "Chamiabac, Señor de la Vara de Hueso",
+    texture: "tex-chamiabac",
+    // Step up from Ahaltocob (2000 HP / 32 dmg): tankier, hits harder,
+    // and adds two brand-new mechanics — frost zones that slow you, and
+    // summoning Espectros. Furia at 50% like Ahaltocob.
+    hp: 2800,
+    speed: 80,
+    damage: 36,
+    xp: 400,
+    scale: 4.4,
+    radius: 30,
+    isBoss: true,
+    ability: "groundBurst",
+    abilityCooldownMs: 2400,
+    abilityRange: 650,
+    abilityDamage: 22,
+    abilityProjectileCount: 3,
+    burstRadius: 75,
+    burstDelayMs: 900,
+    abilitySlowMs: 2000,
+    summon: { kind: "frostWraith", count: 2, cooldownMs: 9000 },
+    enrageAtHpPct: 0.5,
+  },
 };
 
 export const WEAPON_DEFS: Record<string, WeaponDef> = {
@@ -244,8 +292,10 @@ export const SPAWN_CAPS: Record<EnemyKind, number> = {
   camazotz: 1,
   boneWarrior: 4,
   jaguarLord: 1,
-    obsidianDancer: 5,
+  obsidianDancer: 5,
   ahaltocob: 1,
+  frostWraith: 6,
+  chamiabac: 1,
 };
 
 export const INFINITE_BOSS_INTERVAL_SECONDS = 4 * 60;

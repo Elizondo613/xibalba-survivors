@@ -1,6 +1,9 @@
 import Phaser from "phaser";
 import { PLAYER_BASE } from "../config";
 
+/** Movement speed multiplier while chilled by frost. */
+const SLOW_FACTOR = 0.55;
+
 export interface PlayerModifiers {
   speedMult: number;
   maxHpBonus: number;
@@ -15,6 +18,10 @@ export class Player {
   hp: number;
   maxHp: number;
   lastHitAt = -9999;
+  /** Chilled by frost until this scene time. */
+  slowUntil = 0;
+  /** Dev-only invincibility (see xibalba.god() in GameScene). */
+  godMode = false;
   facing = new Phaser.Math.Vector2(0, 1);
   mods: PlayerModifiers = {
     speedMult: 1,
@@ -48,7 +55,7 @@ export class Player {
 
   move(dirX: number, dirY: number, dt: number) {
     const vec = new Phaser.Math.Vector2(dirX, dirY);
-    const speed = PLAYER_BASE.speed * this.mods.speedMult;
+    const speed = PLAYER_BASE.speed * this.mods.speedMult * (this.isSlowed ? SLOW_FACTOR : 1);
     if (vec.lengthSq() > 0) {
       vec.normalize();
       this.facing.copy(vec);
@@ -59,12 +66,28 @@ export class Player {
       this.sprite.setFlipX(vec.x < -0.05 ? true : vec.x > 0.05 ? false : this.sprite.flipX);
     } else {
       this.sprite.setVelocity(0, 0);
-      this.sprite.setScale(2.4);
+            this.sprite.setScale(2.4);
+    }
+
+    // Icy-blue tint while chilled (skipped during the white hit flash).
+    if (this.scene.time.now - this.lastHitAt > 90) {
+      if (this.isSlowed) this.sprite.setTint(0x9fd8ff);
+      else this.sprite.clearTint();
     }
     void dt;
   }
 
+  get isSlowed() {
+    return this.scene.time.now < this.slowUntil;
+  }
+
+  applySlow(ms: number) {
+    if (this.godMode) return;
+    this.slowUntil = Math.max(this.slowUntil, this.scene.time.now + ms);
+  }
+
   takeDamage(amount: number): boolean {
+    if (this.godMode) return false;
     const now = this.scene.time.now;
     if (now - this.lastHitAt < PLAYER_BASE.invulnMs) return false;
     const reduced = amount * (1 - this.mods.damageReduction);

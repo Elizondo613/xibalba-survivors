@@ -63,7 +63,7 @@ export default function UpgradeModal() {
                 <div>
                   <p className="font-glyph text-base font-bold text-bone">{option.name}</p>
                   <p className="mt-0.5 text-xs font-semibold uppercase tracking-wider text-gold/80">
-                    {option.isNew ? "Nuevo" : `Nivel ${option.nextLevel}`}
+                    {option.type === "bonus" ? "Ofrenda" : option.isNew ? "Nuevo" : `Nivel ${option.nextLevel}`}
                   </p>
                 </div>
                 <p className="text-xs leading-snug text-bone/70">{option.description}</p>
