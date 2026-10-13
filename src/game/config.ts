@@ -199,6 +199,50 @@ export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
     summon: { kind: "frostWraith", count: 2, cooldownMs: 9000 },
     enrageAtHpPct: 0.5,
   },
+    emberHound: {
+    kind: "emberHound",
+    name: "Sabueso de Brasas",
+    texture: "tex-hound",
+    // Step up from the Espectro (60 HP / 17 dmg): the fastest regular
+    // enemy so far, and it scorches the ground behind it — chasing you
+    // in circles slowly fills the arena with fire.
+    hp: 75,
+    speed: 108,
+    damage: 19,
+    xp: 18,
+    scale: 2.6,
+    radius: 13,
+    fireTrail: { intervalMs: 260, radius: 20, durationMs: 2600, damage: 8 },
+  },
+  vucubCame: {
+    kind: "vucubCame",
+    name: "Vucub-Camé, Siete Muerte",
+    texture: "tex-vucubcame",
+    // Step up from Chamiabac (2800 HP / 36 dmg). Combines what the
+    // previous lords did (eruptions, charges, summons, furia) and adds
+    // fire that STAYS on the ground, so the safe space keeps shrinking.
+    hp: 3800,
+    speed: 88,
+    damage: 40,
+    xp: 500,
+    scale: 4.6,
+    radius: 32,
+    isBoss: true,
+    ability: "groundBurst",
+    abilityCooldownMs: 2600,
+    abilityRange: 650,
+    abilityDamage: 24,
+    abilityProjectileCount: 4,
+    burstRadius: 80,
+    burstDelayMs: 1000,
+    burstColor: 0xff8a3d,
+    burstLingerMs: 3500,
+    burstLingerDamage: 10,
+    dash: { cooldownMs: 5000, windupMs: 650, durationMs: 500, speed: 560, range: 500 },
+    fireTrail: { intervalMs: 90, radius: 26, durationMs: 3000, damage: 12, onlyWhileDashing: true },
+    summon: { kind: "emberHound", count: 2, cooldownMs: 11000 },
+    enrageAtHpPct: 0.5,
+  },
 };
 
 export const WEAPON_DEFS: Record<string, WeaponDef> = {
@@ -296,6 +340,8 @@ export const SPAWN_CAPS: Record<EnemyKind, number> = {
   ahaltocob: 1,
   frostWraith: 6,
   chamiabac: 1,
+  emberHound: 6,
+  vucubCame: 1,
 };
 
 export const INFINITE_BOSS_INTERVAL_SECONDS = 4 * 60;

@@ -229,6 +229,37 @@ const CHAMIABAC_GRID = [
   "G...KK....KK....",
 ];
 
+const EMBER_HOUND_GRID = [
+  "..............",
+  "...Y..Y..Y..k.",
+  "..YOY.OO.OY.kk",
+  "..OOOOOOOOOkkk",
+  ".OkkkkkkkkkkrK",
+  "OOkKKKKKKKKKKK",
+  "O.kKKKKKKKKKKY",
+  "..kKKKKKKKKk..",
+  "..kK.kK..kK...",
+  "..YO.YO..YO...",
+  "..............",
+];
+
+const VUCUB_CAME_GRID = [
+  "...Y..O..O..Y...",
+  "..YOY.OYYO.YOY..",
+  "..OOOOOOOOOOOO..",
+  "..KWWWWWWWWWWK..",
+  "..WWrrWWWWrrWW..",
+  "..WWWWWKKWWWWW..",
+  "..KWKWKWKWKWKK..",
+  "O.KKKKKKKKKKKK.O",
+  "OOKRKKKKKKKKRKOO",
+  "YOKRRKKKKKKRRKOY",
+  "..KKRKKOOKKRKK..",
+  "...KKKKKKKKKK...",
+  "...KK......KK...",
+  "...kk......kk...",
+];
+
 const GEM_GRID = ["..G.", ".GgG", "GggG", ".GGG", "..G."];
 
 const LIFE_CROSS_GRID = [
@@ -263,6 +294,8 @@ export function generateAllTextures(scene: Phaser.Scene) {
   drawGrid(scene, "tex-blade", BLADE_GRID, 4);
   drawGrid(scene, "tex-wraith", FROST_WRAITH_GRID, 4);
   drawGrid(scene, "tex-chamiabac", CHAMIABAC_GRID, 5);
+  drawGrid(scene, "tex-hound", EMBER_HOUND_GRID, 4);
+  drawGrid(scene, "tex-vucubcame", VUCUB_CAME_GRID, 5);
   drawGrid(scene, "tex-gem", GEM_GRID, 4, false);
   drawGrid(scene, "tex-dart", DART_GRID, 4, false);
   drawGrid(scene, "tex-orb", ORB_GRID, 4, false);
@@ -359,7 +392,7 @@ const GROUND_STYLES: Record<string, GroundStyle> = {
       }
     },
   },
-    // Casa del Frío: frozen blue-gray stone with frost cracks and snow.
+  // Casa del Frío: frozen blue-gray stone with frost cracks and snow.
   "tex-ground-frio": {
     base: "#0E1419",
     line: "#1E2C36",
@@ -387,6 +420,34 @@ const GROUND_STYLES: Record<string, GroundStyle> = {
       ctx.beginPath();
       ctx.ellipse(rng.between(16, size - 16), rng.between(16, size - 16), 9, 5, 0, 0, Math.PI * 2);
       ctx.fill();
+    },
+  },
+  // Casa del Fuego: cracked basalt with glowing lava seams and embers.
+  "tex-ground-fuego": {
+    base: "#140A08",
+    line: "#2A1410",
+    specks: ["#1E0F0B", "#26120D"],
+    decorate: (ctx, rng, size) => {
+      for (let n = 0; n < 2; n++) {
+        const pts: [number, number][] = [[rng.between(4, size - 24), rng.between(4, size - 24)]];
+        for (let k = 0; k < 4; k++) {
+          const [px, py] = pts[pts.length - 1];
+          pts.push([px + rng.between(3, 7), py + rng.between(-3, 6)]);
+        }
+        // Wide orange glow with a thin yellow core = molten crack.
+        for (const [width, color] of [[3, "rgba(255, 138, 61, 0.55)"], [1, "rgba(244, 211, 94, 0.85)"]] as const) {
+          ctx.lineWidth = width;
+          ctx.strokeStyle = color;
+          ctx.beginPath();
+          ctx.moveTo(pts[0][0], pts[0][1]);
+          for (const [px, py] of pts.slice(1)) ctx.lineTo(px, py);
+          ctx.stroke();
+        }
+      }
+      ctx.fillStyle = "rgba(255, 138, 61, 0.6)";
+      for (let i = 0; i < 6; i++) {
+        ctx.fillRect(rng.between(0, size - 2), rng.between(0, size - 2), 1, 1);
+      }
     },
   },
 };

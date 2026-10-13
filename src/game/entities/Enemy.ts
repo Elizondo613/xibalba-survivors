@@ -36,6 +36,8 @@ export class Enemy {
 
   /** Next time this enemy may summon reinforcements (def.summon). */
   nextSummonAt: number;
+  /** Next time this enemy drops a fire patch (def.fireTrail). */
+  nextTrailAt = 0;
 
   // --- Furia (phase 2) ---
   enraged = false;

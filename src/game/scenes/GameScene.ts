@@ -23,7 +23,9 @@ import { useGameStore, gameBridge } from "../../store/gameStore";
 import type { EnemyKind, GameMode, UpgradeOption } from "../types";
 
 /** A frost eruption waiting to go off (Casa del Frío). */
-interface FrostHazard {
+/** A ground eruption waiting to go off: frost (Casa del Frío) or
+ * fire that keeps burning afterwards (Casa del Fuego). */
+interface GroundHazard {
   x: number;
   y: number;
   radius: number;
@@ -31,7 +33,22 @@ interface FrostHazard {
   detonateAt: number;
   damage: number;
   slowMs: number;
+  color: number;
+  lingerMs: number;
+  lingerDamage: number;
 }
+
+/** Burning ground: hurts the player while they stand on it. */
+interface FirePatch {
+  x: number;
+  y: number;
+  radius: number;
+  expiresAt: number;
+  damage: number;
+}
+
+/** Performance cap on simultaneous fire patches (oldest burn out first). */
+const MAX_FIRE_PATCHES = 90;
 
 /** Dev/test commands, only exposed in `npm run dev` (see installDevTools). */
 interface XibalbaDevTools {
@@ -87,7 +104,8 @@ export class GameScene extends Phaser.Scene {
   private ground!: Phaser.GameObjects.TileSprite;
   /** Redrawn every frame: warning lines for enemies about to dash. */
   private telegraphLayer!: Phaser.GameObjects.Graphics;
-  private hazards: FrostHazard[] = [];
+  private hazards: GroundHazard[] = [];
+  private firePatches: FirePatch[] = [];
   /** Any console cheat used this run → records are not saved. */
   private cheatsUsed = false;
 
@@ -189,6 +207,7 @@ export class GameScene extends Phaser.Scene {
     this.ground.setTexture(map.groundTexture);
     this.telegraphLayer.clear();
     this.hazards = [];
+    this.firePatches = [];
 
     this.weaponSystem = new WeaponSystem();
     this.weaponSystem.addOrUpgrade("obsidianDart");
@@ -256,6 +275,7 @@ export class GameScene extends Phaser.Scene {
     this.ground.setTexture(map.groundTexture);
     this.telegraphLayer.clear();
     this.hazards = [];
+    this.firePatches = [];
     this.elapsedSeconds = 0;
     // Small grace heal between houses of Xibalba — carrying near-zero
     // HP straight into a harder map would feel unfair.
@@ -306,9 +326,11 @@ export class GameScene extends Phaser.Scene {
     this.updateSpawning(time);
     this.updateEnemies(time);
     this.drawDashTelegraphs(time);
+    this.updateFirePatches(time);
     this.updateHazards(time);
     this.updateEnemyAbilities(time);
     this.updateSummons(time);
+    this.updateFireTrails(time);
     this.updateProjectiles(time);
     this.updateOrbitCollisions(time);
     this.updateGems();
@@ -535,6 +557,9 @@ export class GameScene extends Phaser.Scene {
             detonateAt: time + delay,
             damage: abilityDamage,
             slowMs: enemy.def.abilitySlowMs ?? 0,
+            color: enemy.def.burstColor ?? 0x9fd8ff,
+            lingerMs: enemy.def.burstLingerMs ?? 0,
+            lingerDamage: (enemy.def.burstLingerDamage ?? 0) * enemy.damageMultiplier,
           });
         }
       }
@@ -630,18 +655,18 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-    /** Draws pending frost eruptions (after drawDashTelegraphs cleared
+  /** Draws pending ground eruptions (after drawDashTelegraphs cleared
    * the layer) and detonates the ones whose time is up. */
   private updateHazards(time: number) {
     if (this.hazards.length === 0) return;
-    const remaining: FrostHazard[] = [];
+    const remaining: GroundHazard[] = [];
 
     for (const h of this.hazards) {
       if (time < h.detonateAt) {
         const progress = (time - h.armedAt) / (h.detonateAt - h.armedAt);
-        this.telegraphLayer.fillStyle(0x9fd8ff, 0.06 + 0.22 * progress);
+        this.telegraphLayer.fillStyle(h.color, 0.06 + 0.22 * progress);
         this.telegraphLayer.fillCircle(h.x, h.y, h.radius);
-        this.telegraphLayer.lineStyle(2, 0x9fd8ff, 0.5 + 0.4 * Math.sin(time / 50));
+        this.telegraphLayer.lineStyle(2, h.color, 0.5 + 0.4 * Math.sin(time / 50));
         this.telegraphLayer.strokeCircle(h.x, h.y, h.radius);
         // Inner ring grows toward the edge = countdown.
         this.telegraphLayer.strokeCircle(h.x, h.y, h.radius * progress);
@@ -649,7 +674,7 @@ export class GameScene extends Phaser.Scene {
         continue;
       }
 
-      this.flashAoe(h.x, h.y, h.radius, 0x9fd8ff);
+      this.flashAoe(h.x, h.y, h.radius, h.color);
       const dist = Phaser.Math.Distance.Between(h.x, h.y, this.player.x, this.player.y);
       if (dist < h.radius + 10) {
         const applied = this.player.takeDamage(h.damage);
@@ -658,9 +683,59 @@ export class GameScene extends Phaser.Scene {
           if (h.slowMs > 0) this.player.applySlow(h.slowMs);
         }
       }
+      // Fire eruptions leave the ground burning.
+      if (h.lingerMs > 0) {
+        this.addFirePatch(h.x, h.y, h.radius * 0.8, time + h.lingerMs, h.lingerDamage);
+      }
     }
 
     this.hazards = remaining;
+  }
+
+  private addFirePatch(x: number, y: number, radius: number, expiresAt: number, damage: number) {
+    if (this.firePatches.length >= MAX_FIRE_PATCHES) this.firePatches.shift();
+    this.firePatches.push({ x, y, radius, expiresAt, damage });
+  }
+
+  /** Draws burning ground and hurts the player standing on it. The
+   * player's 500ms invulnerability after each hit turns this into a
+   * steady burn instead of an instant kill. */
+  private updateFirePatches(time: number) {
+    if (this.firePatches.length === 0) return;
+    this.firePatches = this.firePatches.filter((p) => p.expiresAt > time);
+
+    for (const p of this.firePatches) {
+      const flicker = 0.22 + 0.1 * Math.sin(time / 70 + p.x);
+      // Fade out during the last half second.
+      const fade = Math.min(1, (p.expiresAt - time) / 500);
+      this.telegraphLayer.fillStyle(0xff8a3d, flicker * fade);
+      this.telegraphLayer.fillCircle(p.x, p.y, p.radius);
+      this.telegraphLayer.fillStyle(0xf4d35e, 0.25 * fade);
+      this.telegraphLayer.fillCircle(p.x, p.y, p.radius * 0.45);
+
+      const dist = Phaser.Math.Distance.Between(p.x, p.y, this.player.x, this.player.y);
+      if (dist < p.radius + 8) {
+        const applied = this.player.takeDamage(p.damage);
+        if (applied) audioManager.playerHurt();
+      }
+    }
+  }
+
+  /** Enemies with def.fireTrail scorch the ground behind them. */
+  private updateFireTrails(time: number) {
+    this.enemies.forEach((enemy) => {
+      const trail = enemy.def.fireTrail;
+      if (!enemy.alive || !trail || time < enemy.nextTrailAt) return;
+      if (trail.onlyWhileDashing && !enemy.isDashing) return;
+      enemy.nextTrailAt = time + trail.intervalMs;
+      this.addFirePatch(
+        enemy.x,
+        enemy.y,
+        trail.radius,
+        time + trail.durationMs,
+        trail.damage * enemy.damageMultiplier
+      );
+    });
   }
 
   /** Bosses with def.summon call reinforcements on a cooldown (one

@@ -46,7 +46,17 @@ export const MAPS: MapDef[] = [
     eliteKind: "frostWraith",
     groundTexture: "tex-ground-frio",
     clearText:
-      "Chamiabac se quiebra como hielo viejo. En el silencio blanco, Yax escucha con claridad una respiración detrás de él — tan cerca que siente su calor en la nuca. Quiere voltear. No lo hace. Adelante, un resplandor rojo ilumina el camino: la Casa del Fuego. Continuará.",
+      "Chamiabac se quiebra como hielo viejo. En el silencio blanco, Yax escucha con claridad una respiración detrás de él — tan cerca que siente su calor en la nuca. Quiere voltear. No lo hace. Adelante, un resplandor rojo ilumina el camino: la Casa del Fuego.",
+  },
+    {
+    id: "casa-fuego",
+    name: "Casa del Fuego",
+    bossKind: "vucubCame",
+    difficultyTier: 2.45,
+    eliteKind: "emberHound",
+    groundTexture: "tex-ground-fuego",
+    clearText:
+      "Vucub-Camé, Siete Muerte, se deshace en cenizas. Al fondo arde una puerta de obsidiana: la salida de Xibalba. Junto a ella espera Hun-Camé, sonriendo como quien ya conoce el final. Detrás de Yax, los pasos ya no se esconden. Continuará.",
   },
 ];
 

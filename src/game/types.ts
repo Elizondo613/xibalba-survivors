@@ -9,10 +9,22 @@ export type EnemyKind =
   | "ahaltocob"
   | "ahaltocob"
   | "frostWraith"
-  | "chamiabac";
+  | "chamiabac"
+  | "emberHound"
+  | "vucubCame";
 
 /** A special attack an enemy kind can use besides plain contact damage. */
 export type EnemyAbility = "aoePulse" | "rangedLinear" | "bladeRing" | "groundBurst";
+
+/** Leaves burning patches on the ground behind the enemy as it moves. */
+export interface FireTrailConfig {
+  intervalMs: number;
+  radius: number;
+  durationMs: number;
+  damage: number;
+  /** Only burn the ground while charging (bosses), not while walking. */
+  onlyWhileDashing?: boolean;
+}
 
 /** Periodically calls reinforcements around the enemy (bosses). */
 export interface SummonConfig {
@@ -79,6 +91,13 @@ export interface EnemyDef {
    * for this many ms. */
   abilitySlowMs?: number;
   summon?: SummonConfig;
+  
+  /** groundBurst only: zone color (defaults to ice blue). */
+  burstColor?: number;
+  /** groundBurst only: after exploding, the zone keeps burning this long. */
+  burstLingerMs?: number;
+  burstLingerDamage?: number;
+  fireTrail?: FireTrailConfig;
 }
 
 export type WeaponId =
