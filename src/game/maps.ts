@@ -2,13 +2,19 @@ import type { MapDef } from "./types";
 
 /** Story-mode stages, in order. Modo Infinito always uses MAPS[0]'s
  * enemy pool and just keeps sending stronger Camazotz visits forever —
- * it never advances through this list. */
+ * it never advances through this list.
+ *
+ * Planned campaign (6 houses): Murciélagos → Jaguares → Navajas →
+ * Frío → Fuego → Puerta de Xibalba (Hun-Camé). The LAST entry in this
+ * array is always treated as the final map, so its clearText is what
+ * shows on the victory screen until the next house is added. */
 export const MAPS: MapDef[] = [
   {
     id: "casa-murcielagos",
     name: "Casa de los Murciélagos",
     bossKind: "camazotz",
     difficultyTier: 1,
+    groundTexture: "tex-ground-murcielagos",
     clearText:
       "La Casa de los Murciélagos ha caído en silencio. Camazotz yace vencido. Pero el suelo cambia bajo tus pies — un rugido lejano anuncia la Casa de los Jaguares, y Yax jura no mirar atrás.",
   },
@@ -18,8 +24,19 @@ export const MAPS: MapDef[] = [
     bossKind: "jaguarLord",
     difficultyTier: 1.35,
     eliteKind: "boneWarrior",
+    groundTexture: "tex-ground-jaguares",
     clearText:
-      "La Casa de los Jaguares ha caído. Chak Balam ya no ruge. Delante, la oscuridad se espesa — más casas de Xibalba esperan antes de la puerta final, donde Hun-Camé cumplirá su palabra... o no. Continuará.",
+      "La Casa de los Jaguares ha caído. Chak Balam ya no ruge. Un viento helado trae el sonido de metal contra piedra: la Casa de las Navajas, donde las cuchillas se mueven solas. Yax aprieta el paso. Detrás de él no se escucha nada... y no voltea.",
+  },
+  {
+    id: "casa-navajas",
+    name: "Casa de las Navajas",
+    bossKind: "ahaltocob",
+    difficultyTier: 1.7,
+    eliteKind: "obsidianDancer",
+    groundTexture: "tex-ground-navajas",
+    clearText:
+      "Ahaltocob cae entre sus propias navajas. Por primera vez, Yax cree escuchar un paso suave a sus espaldas — o quizá es solo el eco. No voltea. Más adelante, el aliento de la Casa del Frío ya le congela los huesos. Continuará.",
   },
 ];
 

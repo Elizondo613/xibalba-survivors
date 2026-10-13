@@ -30,6 +30,8 @@ const PALETTE: Record<string, string> = {
   O: "#FF8A3D", // ember orange
   Y: "#F4D35E", // sun yellow
   E: "#2E86AB", // eye cyan glow
+  X: "#3B4048", // slate / dark steel
+  x: "#A9B6C4", // blade steel glint
 };
 
 function mirrorRows(halfRows: string[]): string[] {
@@ -161,6 +163,38 @@ const JAGUAR_LORD_GRID = [
   "................",
 ];
 
+const OBSIDIAN_DANCER_GRID = [
+  "............",
+  ".....XX.....",
+  "....XrrX....",
+  "....XXXX....",
+  "x..XXxxXX..x",
+  ".x.XXXXXX.x.",
+  "..xXXxxXXx..",
+  "...XXXXXX...",
+  "...XX..XX...",
+  "..XX....XX..",
+  "..K......K..",
+  "............",
+];
+
+const AHALTOCOB_GRID = [
+  "..x..x....x..x..",
+  "..x.xx.xx.xx.x..",
+  "..XXXXXXXXXXXX..",
+  "..XKrrKXXKrrKX..",
+  "..XXXXXxxXXXXX..",
+  "x..XXXXXXXXXX..x",
+  ".x.RXXxXXxXXR.x.",
+  "..xRRXXXXXXRRx..",
+  "...RRXXxxXXRR...",
+  "....XXXXXXXX....",
+  "....XX....XX....",
+  "...XX......XX...",
+  "...KK......KK...",
+  "................",
+];
+
 const GEM_GRID = ["..G.", ".GgG", "GggG", ".GGG", "..G."];
 
 const LIFE_CROSS_GRID = [
@@ -180,6 +214,8 @@ const SUN_GRID = ["..Y..", ".YOY.", "YOoOY", ".YOY.", "..Y.."];
 const WHIP_GRID = [".GG.", "GggG", ".GG."];
 const SHRAPNEL_GRID = [".W.", "WwW", ".W."];
 const JAGUAR_SPIKE_GRID = [".P.", "PpP", "PpP", ".P."];
+// Points along +x: Projectile rotates sprites to face their velocity.
+const BLADE_GRID = ["..x...", "XxxxxX", "..x..."];
 
 export function generateAllTextures(scene: Phaser.Scene) {
   drawGrid(scene, "tex-player", PLAYER_GRID, 4);
@@ -188,6 +224,9 @@ export function generateAllTextures(scene: Phaser.Scene) {
   drawGrid(scene, "tex-skeleton", SKELETON_GRID, 4);
   drawGrid(scene, "tex-camazotz", CAMAZOTZ_GRID, 5);
   drawGrid(scene, "tex-jaguarlord", JAGUAR_LORD_GRID, 5);
+  drawGrid(scene, "tex-dancer", OBSIDIAN_DANCER_GRID, 4);
+  drawGrid(scene, "tex-ahaltocob", AHALTOCOB_GRID, 5);
+  drawGrid(scene, "tex-blade", BLADE_GRID, 4);
   drawGrid(scene, "tex-gem", GEM_GRID, 4, false);
   drawGrid(scene, "tex-dart", DART_GRID, 4, false);
   drawGrid(scene, "tex-orb", ORB_GRID, 4, false);
@@ -197,41 +236,120 @@ export function generateAllTextures(scene: Phaser.Scene) {
   drawGrid(scene, "tex-jaguarspike", JAGUAR_SPIKE_GRID, 5, false);
   drawGrid(scene, "tex-lifecross", LIFE_CROSS_GRID, 4, false);
 
-  generateGroundTile(scene);
+  generateHouseGrounds(scene);
   generateVignette(scene);
   generateParticle(scene);
 }
 
-function generateGroundTile(scene: Phaser.Scene) {
+// ---------- Ground tiles: one per "house" of Xibalba ----------
+// Each map in maps.ts points to one of these keys via `groundTexture`.
+
+type Rng = Phaser.Math.RandomDataGenerator;
+
+interface GroundStyle {
+  base: string;
+  line: string;
+  specks: string[];
+  /** Draws the house-specific details on top of the base stone. */
+  decorate: (ctx: CanvasRenderingContext2D, rng: Rng, size: number) => void;
+}
+
+const GROUND_STYLES: Record<string, GroundStyle> = {
+  // Casa de los Murciélagos: dark cave stone with faint jade moss.
+  "tex-ground-murcielagos": {
+    base: "#120E0B",
+    line: "#231B15",
+    specks: ["#1C1712", "#241C16", "#0E7A5F22"],
+    decorate: (ctx, rng, size) => {
+      ctx.fillStyle = "rgba(14, 122, 95, 0.15)";
+      for (let i = 0; i < 6; i++) {
+        ctx.fillRect(rng.between(0, size), rng.between(0, size), 2, 2);
+      }
+    },
+  },
+  // Casa de los Jaguares: reddish earth raked by claw marks.
+  "tex-ground-jaguares": {
+    base: "#170D09",
+    line: "#2E1A12",
+    specks: ["#24130D", "#331A11"],
+    decorate: (ctx, rng, size) => {
+      ctx.strokeStyle = "#4A2418";
+      ctx.lineWidth = 2;
+      for (let n = 0; n < 2; n++) {
+        const x = rng.between(6, size - 22);
+        const y = rng.between(6, size - 22);
+        for (let i = 0; i < 3; i++) {
+          ctx.beginPath();
+          ctx.moveTo(x + i * 5, y);
+          ctx.lineTo(x + i * 5 + 10, y + 14);
+          ctx.stroke();
+        }
+      }
+      ctx.fillStyle = "rgba(158, 43, 37, 0.16)";
+      for (let i = 0; i < 4; i++) {
+        ctx.fillRect(rng.between(0, size - 3), rng.between(0, size - 3), 3, 3);
+      }
+    },
+  },
+  // Casa de las Navajas: cold slate littered with obsidian blades and
+  // thin blood-red cuts.
+  "tex-ground-navajas": {
+    base: "#101216",
+    line: "#23282F",
+    specks: ["#191C21", "#20242A"],
+    decorate: (ctx, rng, size) => {
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 3; i++) {
+        const x = rng.between(4, size - 14);
+        const y = rng.between(4, size - 14);
+        const len = rng.between(6, 11);
+        ctx.strokeStyle = "#6F7F8F";
+        ctx.beginPath();
+        ctx.moveTo(x, y + len);
+        ctx.lineTo(x + len, y);
+        ctx.stroke();
+        ctx.fillStyle = "#B8C6D4"; // glint on the tip
+        ctx.fillRect(x + len - 1, y - 1, 2, 2);
+      }
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = "rgba(90, 22, 22, 0.65)";
+      for (let i = 0; i < 2; i++) {
+        const x = rng.between(2, size - 20);
+        const y = rng.between(2, size - 4);
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + rng.between(8, 16), y + rng.between(-2, 2));
+        ctx.stroke();
+      }
+    },
+  },
+};
+
+function generateHouseGrounds(scene: Phaser.Scene) {
   const size = 64;
-  const key = "tex-ground";
-  const canvasTexture = scene.textures.createCanvas(key, size, size);
-  if (!canvasTexture) return;
-  const ctx = canvasTexture.getContext();
-
-  ctx.fillStyle = "#120E0B";
-  ctx.fillRect(0, 0, size, size);
-
-  // Carved stone block pattern
-  ctx.strokeStyle = "#231B15";
-  ctx.lineWidth = 2;
-  ctx.strokeRect(1, 1, size - 2, size - 2);
-
   const rng = Phaser.Math.RND;
-  for (let i = 0; i < 10; i++) {
-    const x = rng.between(4, size - 8);
-    const y = rng.between(4, size - 8);
-    ctx.fillStyle = rng.pick(["#1C1712", "#241C16", "#0E7A5F22"]);
-    ctx.fillRect(x, y, rng.between(2, 5), rng.between(2, 5));
-  }
 
-  // faint jade moss speckle
-  ctx.fillStyle = "rgba(14, 122, 95, 0.15)";
-  for (let i = 0; i < 6; i++) {
-    ctx.fillRect(rng.between(0, size), rng.between(0, size), 2, 2);
-  }
+  for (const [key, style] of Object.entries(GROUND_STYLES)) {
+    const canvasTexture = scene.textures.createCanvas(key, size, size);
+    if (!canvasTexture) continue;
+    const ctx = canvasTexture.getContext();
 
-  canvasTexture.refresh();
+    ctx.fillStyle = style.base;
+    ctx.fillRect(0, 0, size, size);
+
+    // Carved stone block outline
+    ctx.strokeStyle = style.line;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(1, 1, size - 2, size - 2);
+
+    for (let i = 0; i < 10; i++) {
+      ctx.fillStyle = rng.pick(style.specks);
+      ctx.fillRect(rng.between(4, size - 8), rng.between(4, size - 8), rng.between(2, 5), rng.between(2, 5));
+    }
+
+    style.decorate(ctx, rng, size);
+    canvasTexture.refresh();
+  }
 }
 
 function generateVignette(scene: Phaser.Scene) {

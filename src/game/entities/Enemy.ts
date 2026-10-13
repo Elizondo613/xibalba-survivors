@@ -1,6 +1,12 @@
 import Phaser from "phaser";
 import type { EnemyDef } from "../types";
 
+/** Furia (boss phase 2) tuning. */
+const ENRAGE_SPEED_MULT = 1.3;
+const ENRAGE_COOLDOWN_MULT = 0.65;
+
+export type DashState = "idle" | "windup" | "dashing";
+
 export class Enemy {
   scene: Phaser.Scene;
   sprite: Phaser.Physics.Arcade.Sprite;
@@ -13,10 +19,24 @@ export class Enemy {
   alive = true;
   hitFlashUntil = 0;
   /** Timestamp (scene time) at which this enemy's special ability
-   * (skeleton AoE pulse / jaguar ranged shot) is next available. */
+   * (skeleton AoE pulse / jaguar ranged shot / blade ring) is next available. */
   nextAbilityAt: number;
   /** small per-enemy offset so groups don't perfectly overlap-stack */
   wanderOffset: number;
+
+  // --- Dash (telegraphed charge) state ---
+  dashState: DashState = "idle";
+  /** End time of the current windup or dash phase. */
+  dashStateUntil = 0;
+  nextDashAt: number;
+  /** Direction locked at the START of the windup — that's what makes
+   * the dash dodgeable: it won't track the player once it's aimed. */
+  dashDirX = 0;
+  dashDirY = 0;
+
+  // --- Furia (phase 2) ---
+  enraged = false;
+  private enrageEventPending = false;
 
   constructor(
     scene: Phaser.Scene,
@@ -44,12 +64,16 @@ export class Enemy {
     this.speed = def.speed * speedMultiplier;
     this.wanderOffset = Math.random() * Math.PI * 2;
     this.nextAbilityAt = (def.abilityCooldownMs ?? 0) * Math.random();
+    // Don't let a freshly spawned (off-screen) enemy dash immediately.
+    this.nextDashAt = def.dash
+      ? scene.time.now + def.dash.cooldownMs * (0.4 + Math.random() * 0.6)
+      : Infinity;
 
-    if (def.isBoss) {
-      this.sprite.setTint(0xffdca0);
-    } else if (def.tint) {
-      this.sprite.setTint(def.tint);
-    }
+    this.applyTint(0);
+  }
+
+  get isDashing() {
+    return this.dashState === "dashing";
   }
 
   update(targetX: number, targetY: number, time: number) {
@@ -57,10 +81,17 @@ export class Enemy {
     const dx = targetX - this.sprite.x;
     const dy = targetY - this.sprite.y;
     const dist = Math.max(1, Math.hypot(dx, dy));
-    const wob = Math.sin(time / 260 + this.wanderOffset) * 0.25;
     const nx = dx / dist;
     const ny = dy / dist;
 
+    // A dash in progress (windup or charge) overrides normal movement.
+    if (this.updateDash(time, nx, ny, dist)) {
+      this.sprite.setFlipX(this.dashDirX < 0);
+      this.applyTint(time);
+      return;
+    }
+
+    const wob = Math.sin(time / 260 + this.wanderOffset) * 0.25;
     let dirX: number;
     let dirY: number;
 
@@ -83,11 +114,62 @@ export class Enemy {
 
     this.sprite.setVelocity(dirX * this.speed, dirY * this.speed);
     this.sprite.setFlipX(dx < 0);
+    this.applyTint(time);
+  }
 
+  /** Returns true while the dash owns this enemy's movement. */
+  private updateDash(time: number, nx: number, ny: number, dist: number): boolean {
+    const dash = this.def.dash;
+    if (!dash) return false;
+
+    if (this.dashState === "windup") {
+      if (time < this.dashStateUntil) {
+        this.sprite.setVelocity(0, 0);
+        return true;
+      }
+      this.dashState = "dashing";
+      this.dashStateUntil = time + dash.durationMs;
+    }
+
+    if (this.dashState === "dashing") {
+      if (time >= this.dashStateUntil) {
+        this.dashState = "idle";
+        const cdMult = this.enraged ? ENRAGE_COOLDOWN_MULT : 1;
+        this.nextDashAt = time + dash.cooldownMs * cdMult;
+        return false;
+      }
+      const s = dash.speed * (this.enraged ? ENRAGE_SPEED_MULT : 1);
+      this.sprite.setVelocity(this.dashDirX * s, this.dashDirY * s);
+      return true;
+    }
+
+    if (time >= this.nextDashAt && dist <= dash.range) {
+      this.dashState = "windup";
+      this.dashStateUntil = time + dash.windupMs * (this.enraged ? 0.75 : 1);
+      this.dashDirX = nx;
+      this.dashDirY = ny;
+      this.sprite.setVelocity(0, 0);
+      return true;
+    }
+
+    return false;
+  }
+
+  /** Length of the dash path, used by GameScene to draw the warning line. */
+  get dashLength() {
+    const dash = this.def.dash;
+    if (!dash) return 0;
+    return dash.speed * (this.enraged ? ENRAGE_SPEED_MULT : 1) * (dash.durationMs / 1000);
+  }
+
+  private applyTint(time: number) {
     if (time < this.hitFlashUntil) {
       this.sprite.setTintFill(0xffffff);
+    } else if (this.dashState === "windup" && Math.floor(time / 80) % 2 === 0) {
+      // Red strobe = "I'm about to charge".
+      this.sprite.setTintFill(0xff4040);
     } else if (this.def.isBoss) {
-      this.sprite.setTint(0xffdca0);
+      this.sprite.setTint(this.enraged ? 0xff8080 : 0xffdca0);
     } else if (this.def.tint) {
       this.sprite.setTint(this.def.tint);
     } else {
@@ -97,13 +179,15 @@ export class Enemy {
 
   canUseAbility(time: number, distanceToPlayer: number): boolean {
     if (!this.def.ability || !this.alive) return false;
+    // Never fire a special mid-charge — keeps boss patterns readable.
+    if (this.dashState !== "idle") return false;
     if (time < this.nextAbilityAt) return false;
     const range = this.def.abilityRange ?? Infinity;
     return distanceToPlayer <= range;
   }
 
   useAbility(time: number) {
-    const cooldown = this.def.abilityCooldownMs ?? 1500;
+    const cooldown = (this.def.abilityCooldownMs ?? 1500) * (this.enraged ? ENRAGE_COOLDOWN_MULT : 1);
     this.nextAbilityAt = time + cooldown * (0.9 + Math.random() * 0.2);
   }
 
@@ -114,7 +198,24 @@ export class Enemy {
       this.alive = false;
       return true;
     }
+    this.checkEnrage();
     return false;
+  }
+
+  private checkEnrage() {
+    const pct = this.def.enrageAtHpPct;
+    if (!pct || this.enraged || this.hp > this.maxHp * pct) return;
+    this.enraged = true;
+    this.speed *= ENRAGE_SPEED_MULT;
+    this.enrageEventPending = true;
+  }
+
+  /** True exactly once, the frame after entering furia — GameScene uses
+   * it to fire the screen shake / flash. */
+  consumeEnrageEvent(): boolean {
+    if (!this.enrageEventPending) return false;
+    this.enrageEventPending = false;
+    return true;
   }
 
   destroy() {

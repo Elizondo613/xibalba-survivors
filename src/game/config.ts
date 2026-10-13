@@ -103,6 +103,54 @@ export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
     abilityProjectileCount: 3,
     projectileSpeed: 280,
   },
+    obsidianDancer: {
+    kind: "obsidianDancer",
+    name: "Danzante de Obsidiana",
+    texture: "tex-dancer",
+    // Tougher than the Guerrero Óseo (34 HP / 13 dmg) and, unlike it,
+    // forces the player to read a telegraph and sidestep.
+    hp: 46,
+    speed: 82,
+    damage: 15,
+    xp: 12,
+    scale: 2.6,
+    radius: 13,
+    dash: {
+      cooldownMs: 3200,
+      windupMs: 600,
+      durationMs: 380,
+      speed: 430,
+      range: 320,
+    },
+  },
+  ahaltocob: {
+    kind: "ahaltocob",
+    name: "Ahaltocob, Señor de las Navajas",
+    texture: "tex-ahaltocob",
+    // Step up from Chak Balam (1400 HP / 28 dmg): more HP, two attack
+    // types instead of one, and a second phase at half health.
+    hp: 2000,
+    speed: 95,
+    damage: 32,
+    xp: 300,
+    scale: 4.2,
+    radius: 28,
+    isBoss: true,
+    ability: "bladeRing",
+    abilityCooldownMs: 2800,
+    abilityRange: 600,
+    abilityDamage: 16,
+    abilityProjectileCount: 8,
+    projectileSpeed: 240,
+    dash: {
+      cooldownMs: 4200,
+      windupMs: 700,
+      durationMs: 450,
+      speed: 520,
+      range: 450,
+    },
+    enrageAtHpPct: 0.5,
+  },
 };
 
 export const WEAPON_DEFS: Record<string, WeaponDef> = {
@@ -196,6 +244,8 @@ export const SPAWN_CAPS: Record<EnemyKind, number> = {
   camazotz: 1,
   boneWarrior: 4,
   jaguarLord: 1,
+    obsidianDancer: 5,
+  ahaltocob: 1,
 };
 
 export const INFINITE_BOSS_INTERVAL_SECONDS = 4 * 60;

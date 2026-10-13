@@ -1,7 +1,27 @@
-export type EnemyKind = "bat" | "jaguar" | "skeleton" | "camazotz" | "boneWarrior" | "jaguarLord";
+export type EnemyKind =
+  | "bat"
+  | "jaguar"
+  | "skeleton"
+  | "camazotz"
+  | "boneWarrior"
+  | "jaguarLord"
+  | "obsidianDancer"
+  | "ahaltocob";
 
 /** A special attack an enemy kind can use besides plain contact damage. */
-export type EnemyAbility = "aoePulse" | "rangedLinear";
+export type EnemyAbility = "aoePulse" | "rangedLinear" | "bladeRing";
+
+/** Telegraphed charge: the enemy stops, flashes red while a warning
+ * line shows its path, then rushes in a STRAIGHT line toward where the
+ * player was when the windup started (not homing — sidestep it). */
+export interface DashConfig {
+  cooldownMs: number;
+  windupMs: number;
+  durationMs: number;
+  speed: number;
+  /** Only starts a dash when the player is within this distance. */
+  range: number;
+}
 
 export interface EnemyDef {
   kind: EnemyKind;
@@ -33,6 +53,13 @@ export interface EnemyDef {
    * (souped-up) compared to the regular jaguar's single shard. */
   abilityProjectileCount?: number;
   preferredRange?: number;
+  
+  /** Optional charge attack, independent of `ability` (an enemy can
+   * have both — e.g. Ahaltocob throws blade rings AND dashes). */
+  dash?: DashConfig;
+  /** Bosses only: below this fraction of max HP (e.g. 0.5) the enemy
+   * enters "furia" — faster, shorter cooldowns, more projectiles. */
+  enrageAtHpPct?: number;
 }
 
 export type WeaponId =
@@ -108,4 +135,6 @@ export interface MapDef {
   eliteKind?: EnemyKind;
   /** Narrative text shown on the zone-clear screen after this map. */
   clearText: string;
+  /** Texture key of this house's floor (generated in TextureGenerator). */
+  groundTexture: string;
 }

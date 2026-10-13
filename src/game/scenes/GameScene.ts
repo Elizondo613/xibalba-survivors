@@ -47,6 +47,11 @@ export class GameScene extends Phaser.Scene {
   private vignette!: Phaser.GameObjects.Image;
   private fxLayer!: Phaser.GameObjects.Graphics;
 
+  /** Floor of the current house — its texture is swapped per map. */
+  private ground!: Phaser.GameObjects.TileSprite;
+  /** Redrawn every frame: warning lines for enemies about to dash. */
+  private telegraphLayer!: Phaser.GameObjects.Graphics;
+
   constructor() {
     super("GameScene");
   }
@@ -54,8 +59,8 @@ export class GameScene extends Phaser.Scene {
   create() {
     this.physics.world.setBounds(0, 0, WORLD_SIZE, WORLD_SIZE);
 
-    this.add
-      .tileSprite(0, 0, WORLD_SIZE, WORLD_SIZE, "tex-ground")
+      this.ground = this.add
+      .tileSprite(0, 0, WORLD_SIZE, WORLD_SIZE, MAPS[0].groundTexture)
       .setOrigin(0, 0)
       .setDepth(0);
 
@@ -67,6 +72,8 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.setZoom(1);
 
     this.fxLayer = this.add.graphics().setDepth(6);
+
+    this.telegraphLayer = this.add.graphics().setDepth(6);
 
     this.vignette = this.add
       .image(0, 0, "tex-vignette")
@@ -131,6 +138,9 @@ export class GameScene extends Phaser.Scene {
     this.difficultyTier = map.difficultyTier;
     this.spawnSystem = new SpawnSystem(map.bossKind, this.mode, map.eliteKind);
 
+    this.ground.setTexture(map.groundTexture);
+    this.telegraphLayer.clear();
+
     this.weaponSystem = new WeaponSystem();
     this.weaponSystem.addOrUpgrade("obsidianDart");
     this.passiveLevels = {};
@@ -193,6 +203,9 @@ export class GameScene extends Phaser.Scene {
     this.difficultyTier = map.difficultyTier;
     this.spawnSystem = new SpawnSystem(map.bossKind, this.mode, map.eliteKind);
 
+    this.ground.setTexture(map.groundTexture);
+    this.telegraphLayer.clear();
+
     this.elapsedSeconds = 0;
     // Small grace heal between houses of Xibalba — carrying near-zero
     // HP straight into a harder map would feel unfair.
@@ -242,6 +255,7 @@ export class GameScene extends Phaser.Scene {
     this.updateWeapons(time, delta);
     this.updateSpawning(time);
     this.updateEnemies(time);
+    this.drawDashTelegraphs(time);
     this.updateEnemyAbilities(time);
     this.updateProjectiles(time);
     this.updateOrbitCollisions(time);
@@ -344,15 +358,12 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private countAliveByKind(): Record<EnemyKind, number> {
-    const counts: Record<EnemyKind, number> = {
-      bat: 0,
-      skeleton: 0,
-      jaguar: 0,
-      camazotz: 0,
-      boneWarrior: 0,
-      jaguarLord: 0,
-    };
+    private countAliveByKind(): Record<EnemyKind, number> {
+    // Built from ENEMY_DEFS so adding a new enemy kind never requires
+    // touching this method again.
+    const counts = Object.fromEntries(
+      Object.keys(ENEMY_DEFS).map((kind) => [kind, 0])
+    ) as Record<EnemyKind, number>;
     this.enemies.forEach((enemy) => {
       if (enemy.alive) counts[enemy.def.kind] += 1;
     });
@@ -362,6 +373,33 @@ export class GameScene extends Phaser.Scene {
   private updateEnemies(time: number) {
     this.enemies.forEach((enemy) => {
       enemy.update(this.player.x, this.player.y, time);
+
+      // Boss entered furia (phase 2): shake + red shockwave so the
+      // player knows the fight just got harder.
+      if (enemy.consumeEnrageEvent()) {
+        this.cameras.main.shake(350, 0.008);
+        this.flashAoe(enemy.x, enemy.y, 140, 0xc43f35);
+        audioManager.enemyDeath();
+      }
+    });
+  }
+
+  /** Pulsing red line showing exactly where a winding-up enemy will
+   * charge. The direction is already locked, so stepping off the line
+   * is how you dodge. */
+  private drawDashTelegraphs(time: number) {
+    this.telegraphLayer.clear();
+    const alpha = 0.35 + 0.25 * Math.sin(time / 60);
+    this.enemies.forEach((enemy) => {
+      if (!enemy.alive || enemy.dashState !== "windup") return;
+      const len = enemy.dashLength;
+      this.telegraphLayer.lineStyle(enemy.def.isBoss ? 6 : 3, 0xc43f35, alpha);
+      this.telegraphLayer.lineBetween(
+        enemy.x,
+        enemy.y,
+        enemy.x + enemy.dashDirX * len,
+        enemy.y + enemy.dashDirY * len
+      );
     });
   }
 
@@ -403,6 +441,30 @@ export class GameScene extends Phaser.Scene {
             })
           );
         }
+        audioManager.shoot();
+      } else if (enemy.def.ability === "bladeRing") {
+        // Ring of blades in every direction. In furia it throws 4 more,
+        // and each volley is rotated so the safe gaps keep moving.
+        const count = (enemy.def.abilityProjectileCount ?? 8) + (enemy.enraged ? 4 : 0);
+        const speed = enemy.def.projectileSpeed ?? 240;
+        const offset = (time / 1000) % (Math.PI * 2);
+        for (let i = 0; i < count; i++) {
+          const angle = offset + (i / count) * Math.PI * 2;
+          this.projectiles.push(
+            new Projectile(this, {
+              x: enemy.x,
+              y: enemy.y,
+              vx: Math.cos(angle) * speed,
+              vy: Math.sin(angle) * speed,
+              damage: abilityDamage,
+              texture: "tex-blade",
+              scale: 2.6,
+              source: "enemy",
+              lifetimeMs: 2600,
+            })
+          );
+        }
+        this.flashAoe(enemy.x, enemy.y, 50, 0xa9b6c4);
         audioManager.shoot();
       }
 
@@ -489,7 +551,9 @@ export class GameScene extends Phaser.Scene {
       if (!enemy.alive) return;
       const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, enemy.x, enemy.y);
       if (dist < enemy.def.radius + 12) {
-        const applied = this.player.takeDamage(enemy.damage);
+        // Getting caught by a charge hurts 50% more than a regular bump.
+        const contactDamage = enemy.isDashing ? enemy.damage * 1.5 : enemy.damage;
+        const applied = this.player.takeDamage(contactDamage);
         if (applied) audioManager.playerHurt();
       }
     });
@@ -634,7 +698,8 @@ export class GameScene extends Phaser.Scene {
       cacaoCollected: this.cacaoCollected,
     });
     if (bossEnemy) {
-      useGameStore.getState().setBoss(true, Math.round(bossEnemy.hp), bossEnemy.maxHp, bossEnemy.def.name);
+      const bossName = bossEnemy.enraged ? `${bossEnemy.def.name} — Furia` : bossEnemy.def.name;
+      useGameStore.getState().setBoss(true, Math.round(bossEnemy.hp), bossEnemy.maxHp, bossName);
     }
   }
 
