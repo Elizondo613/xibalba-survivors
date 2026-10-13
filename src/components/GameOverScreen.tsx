@@ -12,6 +12,7 @@ export default function GameOverScreen() {
   const newTimeRecord = useGameStore((s) => s.newTimeRecord);
   const mode = useGameStore((s) => s.mode);
   const mapIndex = useGameStore((s) => s.mapIndex);
+  const cycle = useGameStore((s) => s.cycle);
 
   if (phase !== "gameover" || !stats) return null;
 
@@ -42,6 +43,12 @@ export default function GameOverScreen() {
         <p className="text-sm text-bone/60">El inframundo reclamó otra alma.</p>
         {mode === "story" && (
           <p className="text-xs text-bone/40">Caíste en: {MAPS[mapIndex]?.name}</p>
+        )}
+        {mode === "infinite" && (
+          <p className="text-xs text-bone/50">
+            Casas superadas: <span className="text-gold-light">{stats.housesCleared ?? 0}</span>
+            {" · "}Caíste en: {MAPS[mapIndex]?.name} (Ciclo {cycle})
+          </p>
         )}
       </div>
 

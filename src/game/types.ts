@@ -171,6 +171,8 @@ export interface RunStats {
   level: number;
   kills: number;
   cacaoCollected: number;
+  /** Modo Infinito only: houses cleared this run (boss killed). */
+  housesCleared?: number;
 }
 
 export type GameMode = "story" | "infinite";

@@ -10,6 +10,10 @@ import {
   BOSS_HEAL_PCT_CAP,
   ENEMY_DEFS,
   PASSIVE_DEFS,
+  INFINITE_BOSS_AT_SECONDS,
+  INFINITE_CYCLE_STEP,
+  INFINITE_HOUSE_HEAL_PCT,
+  STORY_BOSS_AT_SECONDS,
   RUN_DURATION_SECONDS,
   SPAWN_CAPS,
   WEAPON_DEFS,
@@ -77,7 +81,7 @@ export class GameScene extends Phaser.Scene {
   private projectiles: Projectile[] = [];
   private gems: ExpGem[] = [];
   private weaponSystem = new WeaponSystem();
-  private spawnSystem = new SpawnSystem("camazotz", "story");
+  private spawnSystem = new SpawnSystem("camazotz", undefined, STORY_BOSS_AT_SECONDS);
   private passiveLevels: PassiveLevels = {};
 
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -117,6 +121,9 @@ export class GameScene extends Phaser.Scene {
    * game clock (frozen during level-ups) so a shop opening right after
    * the kill can't cancel the victory. */
   private victoryAtElapsed: number | null = null;
+  /** Modo Infinito: lap through the houses (1, 2, 3…) and houses cleared. */
+  private cycle = 1;
+  private housesCleared = 0;
 
   constructor() {
     super("GameScene");
@@ -211,23 +218,11 @@ export class GameScene extends Phaser.Scene {
     this.gems.forEach((g) => g.destroy());
     this.gems = [];
 
-    // A fresh run (whether from the menu or after dying) always starts
-    // a story campaign over at map 0. Modo Infinito ignores mapIndex
-    // entirely and always plays MAPS[0]'s enemy pool.
+    // Every run (story or infinite) starts at the first house.
     this.mode = useGameStore.getState().mode;
-    this.mapIndex = 0;
-    useGameStore.getState().setMapIndex(0);
-    const map = MAPS[this.mapIndex];
-    this.difficultyTier = map.difficultyTier;
-    this.spawnSystem = new SpawnSystem(map.bossKind, this.mode, map.eliteKind);
-
-    this.ground.setTexture(map.groundTexture);
-    this.telegraphLayer.clear();
-    this.hazards = [];
-    this.firePatches = [];
-    this.tweens.killTweensOf(this.darkness);
-    this.darkness.setAlpha(0);
-    this.victoryAtElapsed = null;
+    this.cycle = 1;
+    this.housesCleared = 0;
+    this.loadHouse(0);
 
     this.weaponSystem = new WeaponSystem();
     this.weaponSystem.addOrUpgrade("obsidianDart");
@@ -267,6 +262,7 @@ export class GameScene extends Phaser.Scene {
       kills: 0,
       cacaoCollected: 0,
       bossActive: false,
+      cycle: 1,
     });
 
     audioManager.unlock();
@@ -286,11 +282,30 @@ export class GameScene extends Phaser.Scene {
     this.gems.forEach((g) => g.destroy());
     this.gems = [];
 
-    this.mapIndex += 1;
-    useGameStore.getState().setMapIndex(this.mapIndex);
-    const map = MAPS[this.mapIndex];
-    this.difficultyTier = map.difficultyTier;
-    this.spawnSystem = new SpawnSystem(map.bossKind, this.mode, map.eliteKind);
+    this.loadHouse(this.mapIndex + 1);
+    // Small grace heal between houses of Xibalba — carrying near-zero
+    // HP straight into a harder map would feel unfair.
+    this.player.heal(30);
+
+    this.running = true;
+    useGameStore.getState().setBoss(false);
+    useGameStore.getState().setPhase("playing");
+    this.syncHud();
+  }
+
+    /** Sets up house `index` for the current mode: floor, enemy pool,
+   * boss timing and difficulty. Clears hazards, but NOT enemies/gems —
+   * the caller decides that. Also restarts the per-house clock. */
+  private loadHouse(index: number) {
+    const map = MAPS[index];
+    this.mapIndex = index;
+    useGameStore.getState().setMapIndex(index);
+
+    // Modo Infinito: every lap through the 6 houses stacks difficulty.
+    const cycleMult = this.mode === "infinite" ? 1 + (this.cycle - 1) * INFINITE_CYCLE_STEP : 1;
+    this.difficultyTier = map.difficultyTier * cycleMult;
+    const bossAt = this.mode === "infinite" ? INFINITE_BOSS_AT_SECONDS : STORY_BOSS_AT_SECONDS;
+    this.spawnSystem = new SpawnSystem(map.bossKind, map.eliteKind, bossAt, cycleMult);
 
     this.ground.setTexture(map.groundTexture);
     this.telegraphLayer.clear();
@@ -300,14 +315,67 @@ export class GameScene extends Phaser.Scene {
     this.darkness.setAlpha(0);
     this.victoryAtElapsed = null;
     this.elapsedSeconds = 0;
-    // Small grace heal between houses of Xibalba — carrying near-zero
-    // HP straight into a harder map would feel unfair.
-    this.player.heal(30);
+  }
 
-    this.running = true;
+  /** Modo Infinito: the house boss died → purge the arena, heal a bit
+   * and move straight on to the next house (no pause screen). After
+   * Hun-Camé it loops back to the first house, one cycle stronger. */
+  private advanceInfiniteHouse() {
+    this.housesCleared += 1;
+    let next = this.mapIndex + 1;
+    if (next >= MAPS.length) {
+      next = 0;
+      this.cycle += 1;
+    }
+
+    this.enemies.forEach((e) => e.destroy());
+    this.enemies.clear();
+    this.projectiles.forEach((p) => p.destroy());
+    this.projectiles = [];
+    // Gems stay on the floor: the XP was earned.
+
+    this.loadHouse(next);
+    this.player.heal(this.player.effectiveMaxHp * INFINITE_HOUSE_HEAL_PCT);
     useGameStore.getState().setBoss(false);
-    useGameStore.getState().setPhase("playing");
+    useGameStore.getState().setHud({ cycle: this.cycle });
+
+    this.cameras.main.flash(400, 230, 198, 92);
+    audioManager.levelUp();
+    this.showHouseBanner(
+      MAPS[next].name,
+      next === 0 ? `Ciclo ${this.cycle} — Xibalba se vuelve más cruel` : `Ciclo ${this.cycle}`
+    );
     this.syncHud();
+  }
+
+  /** Big centered title that fades in and out (Modo Infinito house changes). */
+  private showHouseBanner(title: string, subtitle: string) {
+    const w = this.scale.width;
+    const h = this.scale.height;
+    const style = { fontFamily: "Cinzel, serif", stroke: "#050403", strokeThickness: 6 };
+    const titleText = this.add
+      .text(w / 2, h * 0.32, title, { ...style, fontSize: "38px", color: "#E6C65C" })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(60)
+      .setAlpha(0);
+    const subText = this.add
+      .text(w / 2, h * 0.32 + 40, subtitle, { ...style, fontSize: "18px", color: "#E8DCC4", strokeThickness: 4 })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(60)
+      .setAlpha(0);
+    this.tweens.add({
+      targets: [titleText, subText],
+      alpha: 1,
+      duration: 400,
+      yoyo: true,
+      hold: 1800,
+      onComplete: () => {
+        titleText.destroy();
+        subText.destroy();
+      },
+    });
   }
 
   private endRun(victory: boolean) {
@@ -323,6 +391,7 @@ export class GameScene extends Phaser.Scene {
         level: this.level,
         kills: this.kills,
         cacaoCollected: this.cacaoCollected,
+        housesCleared: this.mode === "infinite" ? this.housesCleared : undefined,
       },
       victory
     );
@@ -376,7 +445,8 @@ export class GameScene extends Phaser.Scene {
     // has played out (death above still takes priority).
     if (this.victoryAtElapsed !== null && this.elapsedSeconds >= this.victoryAtElapsed) {
       this.victoryAtElapsed = null;
-      if (isFinalMap(this.mapIndex)) this.endRun(true);
+      if (this.mode === "infinite") this.advanceInfiniteHouse();
+      else if (isFinalMap(this.mapIndex)) this.endRun(true);
       else this.triggerZoneClear();
       return;
     }
@@ -849,7 +919,7 @@ export class GameScene extends Phaser.Scene {
             "xibalba.full()        → todas las armas y pasivas al máximo",
             "xibalba.god()         → activa/desactiva invencibilidad",
             "xibalba.boss()        → adelanta el reloj para que salga el jefe",
-            "xibalba.clear()       → termina la casa actual (en la final, mata al jefe)",
+            "xibalba.clear()       → termina la casa actual (en la final y en Infinito, mata al jefe)",
           ].join("\n")
         );
       },
@@ -865,13 +935,13 @@ export class GameScene extends Phaser.Scene {
       },
       boss: () => {
         this.markCheatsUsed();
-        this.elapsedSeconds = Math.max(this.elapsedSeconds, 238);
+        this.elapsedSeconds = Math.max(this.elapsedSeconds, this.spawnSystem.bossAtSeconds - 2);
       },
       clear: () => {
         this.markCheatsUsed();
         this.elapsedSeconds = RUN_DURATION_SECONDS;
         // The final house is won by killing the boss, not by the clock.
-        if (MAPS[this.mapIndex].mustDefeatBoss) {
+        if (this.mode === "infinite" || MAPS[this.mapIndex].mustDefeatBoss) {
           this.enemies.forEach((e, id) => {
             if (e.alive && e.def.isBoss) this.applyDamageToEnemy(id, e, e.hp + 1, this.time.now);
           });
@@ -1012,7 +1082,9 @@ export class GameScene extends Phaser.Scene {
 
     if (enemy.def.isBoss) {
       useGameStore.getState().setBoss(false);
-      if (this.mode === "story" && MAPS[this.mapIndex].mustDefeatBoss) {
+      // Story: only houses marked mustDefeatBoss. Infinite: every boss
+      // kill opens the way to the next house.
+      if (this.mode === "infinite" || MAPS[this.mapIndex].mustDefeatBoss) {
         this.onMustDefeatBossKilled(enemy.x, enemy.y);
       }
     }
@@ -1077,7 +1149,8 @@ export class GameScene extends Phaser.Scene {
       level: this.level,
       xp: Math.round(this.xp),
       xpToNext: xpToNextLevel(this.level),
-      timeSurvived: this.elapsedSeconds,
+      // Infinite shows total run time; story shows the house countdown.
+      timeSurvived: this.mode === "infinite" ? this.totalElapsedSeconds : this.elapsedSeconds,
       kills: this.kills,
       cacaoCollected: this.cacaoCollected,
     });

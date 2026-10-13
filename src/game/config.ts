@@ -408,8 +408,15 @@ export const SPAWN_CAPS: Record<EnemyKind, number> = {
  * (regular enemies get the full healPct). */
 export const BOSS_HEAL_PCT_CAP = 0.02;
 
-export const INFINITE_BOSS_INTERVAL_SECONDS = 4 * 60;
-export const INFINITE_BOSS_TIER_STEP = 0.35;
+/** Seconds into a house before its boss shows up. Story keeps the
+ * long 4-minute build-up; Modo Infinito is faster-paced. */
+export const STORY_BOSS_AT_SECONDS = 240;
+export const INFINITE_BOSS_AT_SECONDS = 90;
+/** Modo Infinito: each full lap through the 6 houses ("ciclo") makes
+ * every enemy and boss this much stronger (stacking: x1, x1.6, x2.2…). */
+export const INFINITE_CYCLE_STEP = 0.6;
+/** Modo Infinito: HP restored (fraction of max) when a house is cleared. */
+export const INFINITE_HOUSE_HEAL_PCT = 0.25;
 
 export function xpToNextLevel(level: number): number {
   return Math.round(8 + level * 6 + Math.pow(level, 1.55));

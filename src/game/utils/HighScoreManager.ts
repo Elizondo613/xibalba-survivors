@@ -9,6 +9,8 @@ export interface HighScoreData {
   totalKills: number;
   /** Longest survival time (seconds) in any single run. */
   bestTimeSurvived: number;
+  /** Modo Infinito: most houses cleared in a single run. */
+  bestInfiniteHouses: number;
 }
 
 export interface RecordRunResult {
@@ -21,6 +23,7 @@ const DEFAULT_HIGH_SCORE: HighScoreData = {
   bestLevel: 0,
   totalKills: 0,
   bestTimeSurvived: 0,
+  bestInfiniteHouses: 0,
 };
 
 /** Reads the stored high score. Falls back to defaults if localStorage
@@ -35,6 +38,7 @@ export function loadHighScore(): HighScoreData {
       bestLevel: Number(parsed.bestLevel) || 0,
       totalKills: Number(parsed.totalKills) || 0,
       bestTimeSurvived: Number(parsed.bestTimeSurvived) || 0,
+      bestInfiniteHouses: Number(parsed.bestInfiniteHouses) || 0,
     };
   } catch {
     return { ...DEFAULT_HIGH_SCORE };
@@ -63,6 +67,7 @@ export function recordRun(stats: RunStats): RecordRunResult {
     bestLevel: Math.max(current.bestLevel, stats.level),
     totalKills: current.totalKills + stats.kills,
     bestTimeSurvived: Math.max(current.bestTimeSurvived, stats.timeSurvived),
+    bestInfiniteHouses: Math.max(current.bestInfiniteHouses, stats.housesCleared ?? 0),
   };
 
   saveHighScore(updated);

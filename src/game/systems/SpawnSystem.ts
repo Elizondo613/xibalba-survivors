@@ -1,12 +1,5 @@
-import type { EnemyKind, GameMode } from "../types";
-import {
-  difficultyAt,
-  ELITE_SPAWN_WEIGHT,
-  INFINITE_BOSS_INTERVAL_SECONDS,
-  INFINITE_BOSS_TIER_STEP,
-  SPAWN_CAPS,
-  SPAWN_WEIGHTS,
-} from "../config";
+import type { EnemyKind } from "../types";
+import { difficultyAt, ELITE_SPAWN_WEIGHT, SPAWN_CAPS, SPAWN_WEIGHTS } from "../config";
 
 export interface SpawnRequest {
   kind: EnemyKind;
@@ -19,14 +12,19 @@ export interface SpawnRequest {
 const SPAWN_MARGIN = 60;
 const REGULAR_KINDS: ("bat" | "skeleton" | "jaguar")[] = ["bat", "skeleton", "jaguar"];
 
+/** Spawns one house's enemies. Both modes now work the same way: one
+ * boss visit per house, `bossAtSeconds` into it. In Modo Infinito the
+ * scene loads the next house when that boss dies. */
 export class SpawnSystem {
   private nextSpawnAt = 800;
-  private bossSpawnCount = 0;
+  private bossSpawned = false;
 
   constructor(
     private bossKind: EnemyKind,
-    private mode: GameMode,
-    private eliteKind?: EnemyKind
+    private eliteKind: EnemyKind | undefined,
+    readonly bossAtSeconds: number,
+    /** Extra boss strength (Modo Infinito cycles); 1 = normal. */
+    private bossMult = 1
   ) {}
 
   private pickKind(aliveCounts: Record<EnemyKind, number>): EnemyKind {
@@ -60,22 +58,16 @@ export class SpawnSystem {
   ): SpawnRequest[] {
     const requests: SpawnRequest[] = [];
 
-    const bossDue =
-      this.mode === "infinite"
-        ? elapsedSeconds >= (this.bossSpawnCount + 1) * INFINITE_BOSS_INTERVAL_SECONDS
-        : this.bossSpawnCount === 0 && elapsedSeconds >= 240;
-
-    if (bossDue && aliveCounts[this.bossKind] < SPAWN_CAPS[this.bossKind]) {
-      this.bossSpawnCount += 1;
-      const tier = this.mode === "infinite" ? (this.bossSpawnCount - 1) * INFINITE_BOSS_TIER_STEP : 0;
+    if (!this.bossSpawned && elapsedSeconds >= this.bossAtSeconds && aliveCounts[this.bossKind] < SPAWN_CAPS[this.bossKind]) {
+      this.bossSpawned = true;
       const angle = Math.random() * Math.PI * 2;
       const dist = viewWidth * 0.6;
       requests.push({
         kind: this.bossKind,
         x: playerX + Math.cos(angle) * dist,
         y: playerY + Math.sin(angle) * dist,
-        hpMult: 1 + tier,
-        dmgMult: 1 + tier * 0.6,
+        hpMult: this.bossMult,
+        dmgMult: 1 + (this.bossMult - 1) * 0.6,
       });
     }
 

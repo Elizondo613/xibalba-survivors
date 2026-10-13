@@ -81,6 +81,11 @@ export default function StartScreen() {
             </span>
             <span className="text-[9px] uppercase tracking-wider text-bone/50">Mejor tiempo</span>
           </div>
+          <div className="flex flex-col items-center gap-1">
+            <InfinityIcon className="h-4 w-4 text-gold-light" />
+            <span className="font-pixel text-[10px] text-bone">{highScore.bestInfiniteHouses}</span>
+            <span className="text-[9px] uppercase tracking-wider text-bone/50">Casas (Infinito)</span>
+          </div>
         </div>
       )}
 

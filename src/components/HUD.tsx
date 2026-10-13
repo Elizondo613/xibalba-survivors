@@ -1,6 +1,7 @@
 import { Heart, Skull, Timer, Gem, TriangleAlert } from "lucide-react";
 import { useGameStore } from "../store/gameStore";
 import { RUN_DURATION_SECONDS } from "../game/config";
+import { MAPS } from "../game/maps";
 
 function formatCountdown(totalSeconds: number) {
   const remaining = Math.max(0, RUN_DURATION_SECONDS - totalSeconds);
@@ -16,7 +17,7 @@ function formatCountUp(totalSeconds: number) {
 }
 
 export default function HUD() {
-  const { hp, maxHp, level, xp, xpToNext, timeSurvived, kills, bossActive, bossHp, bossMaxHp, bossName, mode, cheatsActive } =
+  const { hp, maxHp, level, xp, xpToNext, timeSurvived, kills, bossActive, bossHp, bossMaxHp, bossName, mode, cheatsActive, mapIndex, cycle } =
     useGameStore();
 
   const hpPct = Math.max(0, Math.min(100, (hp / maxHp) * 100));
@@ -57,6 +58,11 @@ export default function HUD() {
         </div>
       </div>
 
+      {mode === "infinite" && (
+        <span className="font-glyph text-[11px] font-bold uppercase tracking-[0.15em] text-gold-light text-stroke">
+          {MAPS[mapIndex]?.name} · Ciclo {cycle}
+        </span>
+      )}
       <div className="flex items-center gap-4 rounded-full border border-gold/30 bg-obsidian/60 px-4 py-1 text-[11px] text-bone/90 backdrop-blur-sm">
         <span className="flex items-center gap-1">
           <Skull className="h-3.5 w-3.5 text-bone/70" /> {kills}

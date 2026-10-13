@@ -17,6 +17,8 @@ interface GameStoreState {
   bossHp: number;
   bossMaxHp: number;
   bossName: string;
+  /** Modo Infinito: current lap through the houses (starts at 1). */
+  cycle: number;
   upgradeOptions: UpgradeOption[];
   finalStats: RunStats | null;
   musicOn: boolean;
@@ -74,6 +76,7 @@ const initialHud = {
   bossHp: 0,
   bossMaxHp: 0,
   bossName: "",
+  cycle: 1,
 };
 
 export const useGameStore = create<GameStoreState>((set, get) => ({
