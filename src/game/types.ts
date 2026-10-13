@@ -11,10 +11,17 @@ export type EnemyKind =
   | "frostWraith"
   | "chamiabac"
   | "emberHound"
-  | "vucubCame";
+  | "vucubCame"
+  | "deathPriest"
+  | "hunCame";
 
 /** A special attack an enemy kind can use besides plain contact damage. */
-export type EnemyAbility = "aoePulse" | "rangedLinear" | "bladeRing" | "groundBurst";
+export type EnemyAbility =
+  | "aoePulse"
+  | "rangedLinear"
+  | "bladeRing"
+  | "groundBurst"
+  | "healAura";
 
 /** Leaves burning patches on the ground behind the enemy as it moves. */
 export interface FireTrailConfig {
@@ -98,6 +105,23 @@ export interface EnemyDef {
   burstLingerMs?: number;
   burstLingerDamage?: number;
   fireTrail?: FireTrailConfig;
+  
+  /** Cycles through several abilities instead of always using
+   * `ability` (each use advances to the next one). */
+  abilityRotation?: EnemyAbility[];
+  /** Per-ability shot counts when one enemy uses several abilities
+   * (each falls back to abilityProjectileCount). */
+  ringCount?: number;
+  fanCount?: number;
+  burstCount?: number;
+  /** Projectile sprite override for bladeRing / rangedLinear. */
+  projectileTexture?: string;
+  /** healAura: heals OTHER enemies within this radius by healPct of
+   * their max HP (bosses are capped, see BOSS_HEAL_PCT_CAP). */
+  healRadius?: number;
+  healPct?: number;
+  /** Bosses only: third phase threshold ("Muerte Verdadera"). */
+  finalPhaseAtHpPct?: number;
 }
 
 export type WeaponId =
@@ -177,4 +201,9 @@ export interface MapDef {
   clearText: string;
   /** Texture key of this house's floor (generated in TextureGenerator). */
   groundTexture: string;
+    /** If true, surviving the 5 minutes is not enough: the house is only
+   * won by defeating its boss (used for Hun-Camé). */
+  mustDefeatBoss?: boolean;
+  /** Custom victory-screen title (defaults to "<name>: superada"). */
+  victoryTitle?: string;
 }

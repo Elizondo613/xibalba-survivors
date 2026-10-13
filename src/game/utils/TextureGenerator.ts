@@ -260,6 +260,43 @@ const VUCUB_CAME_GRID = [
   "...kk......kk...",
 ];
 
+const DEATH_PRIEST_GRID = [
+  "...j..j..j..",
+  "...jGjjGj...",
+  "....GGGG....",
+  "...KWWWWK...",
+  "...WjWWjW...",
+  "...KWKKWK.G.",
+  "..PPPPPPPPG.",
+  ".PPpPGGPpPG.",
+  ".PpPPGGPPpG.",
+  "..PpPPPPpPG.",
+  "..PPpPPpPPG.",
+  "...PP..PP.G.",
+  "...KK..KK...",
+];
+
+const HUN_CAME_GRID = [
+  "..j..j.jj.j..j..",
+  "..jj.jjggjj.jj..",
+  "...jGGGggGGGj...",
+  "...GgGGGGGGgG...",
+  "...KWWWWWWWWK...",
+  "...WWppWWppWW...",
+  "...WWppWWppWW...",
+  "...KWWWKKWWWK...",
+  "...WKWKWWKWKW...",
+  "..GKKWWWWWWKKG..",
+  ".PPPPGGGGGGPPPP.",
+  "PPpPPPPYYPPPPpPP",
+  "PpPPpPPGGPPpPPpP",
+  "PPpPPPpPPpPPPpPP",
+  ".PPpPPPPPPPPpPP.",
+  "..PPPpPPPPpPPP..",
+  "...PP......PP...",
+  "...KK......KK...",
+];
+
 const GEM_GRID = ["..G.", ".GgG", "GggG", ".GGG", "..G."];
 
 const LIFE_CROSS_GRID = [
@@ -281,6 +318,7 @@ const SHRAPNEL_GRID = [".W.", "WwW", ".W."];
 const JAGUAR_SPIKE_GRID = [".P.", "PpP", "PpP", ".P."];
 // Points along +x: Projectile rotates sprites to face their velocity.
 const BLADE_GRID = ["..x...", "XxxxxX", "..x..."];
+const DEATH_ORB_GRID = [".pp.", "pPKp", "pKPp", ".pp."];
 
 export function generateAllTextures(scene: Phaser.Scene) {
   drawGrid(scene, "tex-player", PLAYER_GRID, 4);
@@ -296,6 +334,9 @@ export function generateAllTextures(scene: Phaser.Scene) {
   drawGrid(scene, "tex-chamiabac", CHAMIABAC_GRID, 5);
   drawGrid(scene, "tex-hound", EMBER_HOUND_GRID, 4);
   drawGrid(scene, "tex-vucubcame", VUCUB_CAME_GRID, 5);
+  drawGrid(scene, "tex-priest", DEATH_PRIEST_GRID, 4);
+  drawGrid(scene, "tex-huncame", HUN_CAME_GRID, 5);
+  drawGrid(scene, "tex-deathorb", DEATH_ORB_GRID, 5);
   drawGrid(scene, "tex-gem", GEM_GRID, 4, false);
   drawGrid(scene, "tex-dart", DART_GRID, 4, false);
   drawGrid(scene, "tex-orb", ORB_GRID, 4, false);
@@ -306,6 +347,7 @@ export function generateAllTextures(scene: Phaser.Scene) {
   drawGrid(scene, "tex-lifecross", LIFE_CROSS_GRID, 4, false);
 
   generateHouseGrounds(scene);
+  generateDarkness(scene);
   generateVignette(scene);
   generateParticle(scene);
 }
@@ -450,7 +492,53 @@ const GROUND_STYLES: Record<string, GroundStyle> = {
       }
     },
   },
+  // Puerta de Xibalba: obsidian temple floor with gold-framed glyphs
+  // and drifting soul lights.
+  "tex-ground-puerta": {
+    base: "#0C0812",
+    line: "#3A2A12",
+    specks: ["#140E1C", "#1A1224"],
+    decorate: (ctx, rng, size) => {
+      ctx.strokeStyle = "rgba(201, 162, 39, 0.16)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(5.5, 5.5, size - 11, size - 11);
+
+      // Maya-style glyph: cartouche, bar and three dots. (Plain
+      // strokeRect on purpose — ctx.roundRect is missing on older iOS.)
+      const gx = rng.between(16, 30);
+      const gy = rng.between(16, 30);
+      ctx.strokeStyle = "rgba(201, 162, 39, 0.45)";
+      ctx.strokeRect(gx + 0.5, gy + 0.5, 14, 12);
+      ctx.fillStyle = "rgba(201, 162, 39, 0.45)";
+      ctx.fillRect(gx + 3, gy + 8, 9, 2);
+      ctx.fillStyle = "rgba(230, 198, 92, 0.6)";
+      for (let k = 0; k < 3; k++) ctx.fillRect(gx + 4 + k * 3, gy + 4, 1, 1);
+
+      ctx.fillStyle = "rgba(139, 95, 191, 0.35)";
+      for (let i = 0; i < 5; i++) {
+        ctx.fillRect(rng.between(0, size - 3), rng.between(0, size - 3), 2, 2);
+      }
+    },
+  },
 };
+
+
+/** Full-screen darkness with a small clear circle around the player,
+ * faded in during Hun-Camé's last phase. Unlike the vignette, the
+ * gradient's last stop extends to the canvas edges, so the corners are
+ * solid black too. */
+function generateDarkness(scene: Phaser.Scene) {
+  const size = 512;
+  const canvasTexture = scene.textures.createCanvas("tex-darkness", size, size);
+  if (!canvasTexture) return;
+  const ctx = canvasTexture.getContext();
+  const gradient = ctx.createRadialGradient(size / 2, size / 2, size * 0.1, size / 2, size / 2, size * 0.38);
+  gradient.addColorStop(0, "rgba(0,0,0,0)");
+  gradient.addColorStop(1, "rgba(0,0,0,0.94)");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, size, size);
+  canvasTexture.refresh();
+}
 
 function generateHouseGrounds(scene: Phaser.Scene) {
   const size = 64;

@@ -7,6 +7,7 @@ import { SpawnSystem } from "../systems/SpawnSystem";
 import { WeaponSystem, type WeaponContext } from "../systems/WeaponSystem";
 import { rollUpgradeOptions, applyUpgrade, type PassiveLevels } from "../systems/UpgradeSystem";
 import {
+  BOSS_HEAL_PCT_CAP,
   ENEMY_DEFS,
   PASSIVE_DEFS,
   RUN_DURATION_SECONDS,
@@ -45,6 +46,7 @@ interface FirePatch {
   radius: number;
   expiresAt: number;
   damage: number;
+  color: number;
 }
 
 /** Performance cap on simultaneous fire patches (oldest burn out first). */
@@ -98,6 +100,8 @@ export class GameScene extends Phaser.Scene {
   private pendingLevelUps = 0;
 
   private vignette!: Phaser.GameObjects.Image;
+    /** Hun-Camé's phase 3: the world goes dark except around the player. */
+  private darkness!: Phaser.GameObjects.Image;
   private fxLayer!: Phaser.GameObjects.Graphics;
 
   /** Floor of the current house — its texture is swapped per map. */
@@ -108,6 +112,11 @@ export class GameScene extends Phaser.Scene {
   private firePatches: FirePatch[] = [];
   /** Any console cheat used this run → records are not saved. */
   private cheatsUsed = false;
+
+  /** When a mustDefeatBoss house is won, in elapsedSeconds. Lives on the
+   * game clock (frozen during level-ups) so a shop opening right after
+   * the kill can't cancel the victory. */
+  private victoryAtElapsed: number | null = null;
 
   constructor() {
     super("GameScene");
@@ -138,6 +147,11 @@ export class GameScene extends Phaser.Scene {
       .setDepth(50)
       .setBlendMode(Phaser.BlendModes.MULTIPLY)
       .setAlpha(0.9);
+    this.darkness = this.add
+      .image(0, 0, "tex-darkness")
+      .setScrollFactor(0)
+      .setDepth(49)
+      .setAlpha(0);
     this.layoutVignette();
     this.handleResize(this.scale.gameSize);
     this.scale.on("resize", this.handleResize, this);
@@ -173,6 +187,9 @@ export class GameScene extends Phaser.Scene {
     this.vignette.setPosition(w / 2, h / 2);
     const scale = Math.max(w, h) / 512 + 0.6;
     this.vignette.setScale(scale);
+    // Slightly larger than the vignette so the black corners always
+    // cover the whole screen.
+    this.darkness?.setPosition(w / 2, h / 2).setScale(Math.max(w, h) / 512 + 1.2);
   }
 
   // ---------------------------------------------------------------
@@ -208,6 +225,9 @@ export class GameScene extends Phaser.Scene {
     this.telegraphLayer.clear();
     this.hazards = [];
     this.firePatches = [];
+    this.tweens.killTweensOf(this.darkness);
+    this.darkness.setAlpha(0);
+    this.victoryAtElapsed = null;
 
     this.weaponSystem = new WeaponSystem();
     this.weaponSystem.addOrUpgrade("obsidianDart");
@@ -276,6 +296,9 @@ export class GameScene extends Phaser.Scene {
     this.telegraphLayer.clear();
     this.hazards = [];
     this.firePatches = [];
+    this.tweens.killTweensOf(this.darkness);
+    this.darkness.setAlpha(0);
+    this.victoryAtElapsed = null;
     this.elapsedSeconds = 0;
     // Small grace heal between houses of Xibalba — carrying near-zero
     // HP straight into a harder map would feel unfair.
@@ -349,12 +372,23 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    // Boss of a mustDefeatBoss house is dead and the death animation
+    // has played out (death above still takes priority).
+    if (this.victoryAtElapsed !== null && this.elapsedSeconds >= this.victoryAtElapsed) {
+      this.victoryAtElapsed = null;
+      if (isFinalMap(this.mapIndex)) this.endRun(true);
+      else this.triggerZoneClear();
+      return;
+    }
+
     // Modo Infinito has no time-based win condition — it only ends on
     // death, and difficulty (including recurring bosses) just keeps
     // climbing via SpawnSystem/difficultyAt.
     if (this.mode === "infinite") return;
 
-    if (this.elapsedSeconds >= RUN_DURATION_SECONDS) {
+    // Houses marked mustDefeatBoss (Hun-Camé) are only won in
+    // killEnemy(), never by the clock.
+    if (this.elapsedSeconds >= RUN_DURATION_SECONDS && !MAPS[this.mapIndex].mustDefeatBoss) {
       if (isFinalMap(this.mapIndex)) {
         this.endRun(true);
       } else {
@@ -455,6 +489,15 @@ export class GameScene extends Phaser.Scene {
         this.flashAoe(enemy.x, enemy.y, 140, 0xc43f35);
         audioManager.enemyDeath();
       }
+      // Phase 3 ("Muerte Verdadera"): bigger shake and the light dies —
+      // only a small circle around the player stays visible.
+      if (enemy.consumeFinalPhaseEvent()) {
+        this.cameras.main.shake(700, 0.012);
+        this.flashAoe(enemy.x, enemy.y, 220, 0x8b5fbf);
+        audioManager.gameOver();
+        this.tweens.killTweensOf(this.darkness);
+        this.tweens.add({ targets: this.darkness, alpha: 1, duration: 1500 });
+      }
     });
   }
 
@@ -477,27 +520,29 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  /** Skeletons pulse a telegraphed AoE around themselves; jaguars (and
-   * the map-2 boss, in a 3-shard burst) fire straight (non-homing)
-   * shards at the player's current position. Both are on a per-enemy
-   * cooldown gated by canUseAbility(). */
+  /** Every special attack. Uses enemy.currentAbility, so enemies with
+   * def.abilityRotation (Sacerdote, Hun-Camé) cycle through several. */
   private updateEnemyAbilities(time: number) {
     this.enemies.forEach((enemy) => {
-      if (!enemy.alive || !enemy.def.ability) return;
+      const ability = enemy.currentAbility;
+      if (!enemy.alive || !ability) return;
 
       const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, enemy.x, enemy.y);
       if (!enemy.canUseAbility(time, dist)) return;
 
-      const abilityDamage = (enemy.def.abilityDamage ?? 10) * enemy.damageMultiplier;
+      const def = enemy.def;
+      const abilityDamage = (def.abilityDamage ?? 10) * enemy.damageMultiplier;
+      // Phase bonuses: +1 tier for furia, +1 more for Muerte Verdadera.
+      const phaseBonus = (enemy.enraged ? 1 : 0) + (enemy.finalPhase ? 1 : 0);
 
-      if (enemy.def.ability === "aoePulse") {
+      if (ability === "aoePulse") {
         this.player.takeDamage(abilityDamage);
         audioManager.playerHurt();
-        this.flashAoe(enemy.x, enemy.y, enemy.def.abilityRange ?? 70, 0x9e2b25);
-      } else if (enemy.def.ability === "rangedLinear") {
+        this.flashAoe(enemy.x, enemy.y, def.abilityRange ?? 70, 0x9e2b25);
+      } else if (ability === "rangedLinear") {
         const baseAngle = Phaser.Math.Angle.Between(enemy.x, enemy.y, this.player.x, this.player.y);
-        const speed = enemy.def.projectileSpeed ?? 260;
-        const shots = enemy.def.abilityProjectileCount ?? 1;
+        const speed = def.projectileSpeed ?? 260;
+        const shots = (def.fanCount ?? def.abilityProjectileCount ?? 1) + phaseBonus * 2 * (def.isBoss ? 1 : 0);
         for (let i = 0; i < shots; i++) {
           const spread = shots > 1 ? (i - (shots - 1) / 2) * 0.16 : 0;
           const angle = baseAngle + spread;
@@ -508,19 +553,19 @@ export class GameScene extends Phaser.Scene {
               vx: Math.cos(angle) * speed,
               vy: Math.sin(angle) * speed,
               damage: abilityDamage,
-              texture: "tex-jaguarspike",
-              scale: enemy.def.isBoss ? 3 : 2.4,
+              texture: def.projectileTexture ?? "tex-jaguarspike",
+              scale: def.isBoss ? 3 : 2.4,
               source: "enemy",
               lifetimeMs: 2200,
             })
           );
         }
         audioManager.shoot();
-      } else if (enemy.def.ability === "bladeRing") {
-        // Ring of blades in every direction. In furia it throws 4 more,
-        // and each volley is rotated so the safe gaps keep moving.
-        const count = (enemy.def.abilityProjectileCount ?? 8) + (enemy.enraged ? 4 : 0);
-        const speed = enemy.def.projectileSpeed ?? 240;
+      } else if (ability === "bladeRing") {
+        // Ring of projectiles in every direction; +4 per phase, and each
+        // volley is rotated so the safe gaps keep moving.
+        const count = (def.ringCount ?? def.abilityProjectileCount ?? 8) + phaseBonus * 4;
+        const speed = def.projectileSpeed ?? 240;
         const offset = (time / 1000) % (Math.PI * 2);
         for (let i = 0; i < count; i++) {
           const angle = offset + (i / count) * Math.PI * 2;
@@ -531,7 +576,7 @@ export class GameScene extends Phaser.Scene {
               vx: Math.cos(angle) * speed,
               vy: Math.sin(angle) * speed,
               damage: abilityDamage,
-              texture: "tex-blade",
+              texture: def.projectileTexture ?? "tex-blade",
               scale: 2.6,
               source: "enemy",
               lifetimeMs: 2600,
@@ -540,28 +585,40 @@ export class GameScene extends Phaser.Scene {
         }
         this.flashAoe(enemy.x, enemy.y, 50, 0xa9b6c4);
         audioManager.shoot();
-      } else if (enemy.def.ability === "groundBurst") {
-        // Frost erupts under the player after a visible warning. The
-        // first one targets you exactly; extra ones (bosses / furia)
-        // land around you to cut off escape routes.
-        const zones = (enemy.def.abilityProjectileCount ?? 1) + (enemy.enraged ? 2 : 0);
-        const delay = (enemy.def.burstDelayMs ?? 900) * (enemy.enraged ? 0.8 : 1);
+      } else if (ability === "groundBurst") {
+        // Eruptions under the player after a visible warning. The first
+        // targets you exactly; extra ones cut off escape routes.
+        const zones = (def.burstCount ?? def.abilityProjectileCount ?? 1) + phaseBonus * 2;
+        const delay = (def.burstDelayMs ?? 900) * (enemy.enraged ? 0.8 : 1);
         for (let i = 0; i < zones; i++) {
           const angle = Math.random() * Math.PI * 2;
           const offset = i === 0 ? 0 : Phaser.Math.Between(70, 150);
           this.hazards.push({
             x: this.player.x + Math.cos(angle) * offset,
             y: this.player.y + Math.sin(angle) * offset,
-            radius: enemy.def.burstRadius ?? 60,
+            radius: def.burstRadius ?? 60,
             armedAt: time,
             detonateAt: time + delay,
             damage: abilityDamage,
-            slowMs: enemy.def.abilitySlowMs ?? 0,
-            color: enemy.def.burstColor ?? 0x9fd8ff,
-            lingerMs: enemy.def.burstLingerMs ?? 0,
-            lingerDamage: (enemy.def.burstLingerDamage ?? 0) * enemy.damageMultiplier,
+            slowMs: def.abilitySlowMs ?? 0,
+            color: def.burstColor ?? 0x9fd8ff,
+            lingerMs: def.burstLingerMs ?? 0,
+            lingerDamage: (def.burstLingerDamage ?? 0) * enemy.damageMultiplier,
           });
         }
+      } else if (ability === "healAura") {
+        // Sacerdote: heals every OTHER enemy nearby. Bosses get a capped
+        // amount, otherwise a few priests would make Hun-Camé immortal.
+        const radius = def.healRadius ?? 180;
+        const pct = def.healPct ?? 0.15;
+        this.enemies.forEach((other) => {
+          if (other === enemy || !other.alive) return;
+          if (Phaser.Math.Distance.Between(enemy.x, enemy.y, other.x, other.y) > radius) return;
+          const healPct = other.def.isBoss ? Math.min(pct, BOSS_HEAL_PCT_CAP) : pct;
+          other.hp = Math.min(other.maxHp, other.hp + other.maxHp * healPct);
+          other.healFlashUntil = time + 250;
+        });
+        this.flashAoe(enemy.x, enemy.y, radius, 0x1fae86);
       }
 
       enemy.useAbility(time);
@@ -685,16 +742,23 @@ export class GameScene extends Phaser.Scene {
       }
       // Fire eruptions leave the ground burning.
       if (h.lingerMs > 0) {
-        this.addFirePatch(h.x, h.y, h.radius * 0.8, time + h.lingerMs, h.lingerDamage);
+        this.addFirePatch(h.x, h.y, h.radius * 0.8, time + h.lingerMs, h.lingerDamage, h.color);
       }
     }
 
     this.hazards = remaining;
   }
 
-  private addFirePatch(x: number, y: number, radius: number, expiresAt: number, damage: number) {
+  private addFirePatch(
+    x: number,
+    y: number,
+    radius: number,
+    expiresAt: number,
+    damage: number,
+    color = 0xff8a3d
+  ) {
     if (this.firePatches.length >= MAX_FIRE_PATCHES) this.firePatches.shift();
-    this.firePatches.push({ x, y, radius, expiresAt, damage });
+    this.firePatches.push({ x, y, radius, expiresAt, damage, color });
   }
 
   /** Draws burning ground and hurts the player standing on it. The
@@ -708,9 +772,9 @@ export class GameScene extends Phaser.Scene {
       const flicker = 0.22 + 0.1 * Math.sin(time / 70 + p.x);
       // Fade out during the last half second.
       const fade = Math.min(1, (p.expiresAt - time) / 500);
-      this.telegraphLayer.fillStyle(0xff8a3d, flicker * fade);
+      this.telegraphLayer.fillStyle(p.color, flicker * fade);
       this.telegraphLayer.fillCircle(p.x, p.y, p.radius);
-      this.telegraphLayer.fillStyle(0xf4d35e, 0.25 * fade);
+      this.telegraphLayer.fillStyle(0xffffff, 0.12 * fade);
       this.telegraphLayer.fillCircle(p.x, p.y, p.radius * 0.45);
 
       const dist = Phaser.Math.Distance.Between(p.x, p.y, this.player.x, this.player.y);
@@ -785,7 +849,7 @@ export class GameScene extends Phaser.Scene {
             "xibalba.full()        → todas las armas y pasivas al máximo",
             "xibalba.god()         → activa/desactiva invencibilidad",
             "xibalba.boss()        → adelanta el reloj para que salga el jefe",
-            "xibalba.clear()       → termina la casa actual",
+            "xibalba.clear()       → termina la casa actual (en la final, mata al jefe)",
           ].join("\n")
         );
       },
@@ -806,6 +870,12 @@ export class GameScene extends Phaser.Scene {
       clear: () => {
         this.markCheatsUsed();
         this.elapsedSeconds = RUN_DURATION_SECONDS;
+        // The final house is won by killing the boss, not by the clock.
+        if (MAPS[this.mapIndex].mustDefeatBoss) {
+          this.enemies.forEach((e, id) => {
+            if (e.alive && e.def.isBoss) this.applyDamageToEnemy(id, e, e.hp + 1, this.time.now);
+          });
+        }
       },
     };
     window.xibalba = tools;
@@ -942,9 +1012,24 @@ export class GameScene extends Phaser.Scene {
 
     if (enemy.def.isBoss) {
       useGameStore.getState().setBoss(false);
+      if (this.mode === "story" && MAPS[this.mapIndex].mustDefeatBoss) {
+        this.onMustDefeatBossKilled(enemy.x, enemy.y);
+      }
     }
     enemy.destroy();
     this.enemies.delete(id);
+  }
+
+  /** The house's real win condition: a big death flash, light comes
+   * back, and after a beat the house (or the whole game) is won. */
+  private onMustDefeatBossKilled(x: number, y: number) {
+    this.cameras.main.shake(600, 0.012);
+    this.cameras.main.flash(500, 255, 255, 255);
+    this.flashAoe(x, y, 260, 0xffffff);
+    this.tweens.killTweensOf(this.darkness);
+    this.tweens.add({ targets: this.darkness, alpha: 0, duration: 800 });
+    // Resolved in update() after 1.5s of *play* time (see victoryAtElapsed).
+    this.victoryAtElapsed = this.elapsedSeconds + 1.5;
   }
 
   private gainXp(amount: number) {
@@ -997,7 +1082,11 @@ export class GameScene extends Phaser.Scene {
       cacaoCollected: this.cacaoCollected,
     });
     if (bossEnemy) {
-      const bossName = bossEnemy.enraged ? `${bossEnemy.def.name} — Furia` : bossEnemy.def.name;
+      const bossName = bossEnemy.finalPhase
+        ? `${bossEnemy.def.name} — Muerte Verdadera`
+        : bossEnemy.enraged
+          ? `${bossEnemy.def.name} — Furia`
+          : bossEnemy.def.name;
       useGameStore.getState().setBoss(true, Math.round(bossEnemy.hp), bossEnemy.maxHp, bossName);
     }
   }

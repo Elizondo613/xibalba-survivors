@@ -4,6 +4,9 @@ import type { EnemyDef } from "../types";
 /** Furia (boss phase 2) tuning. */
 const ENRAGE_SPEED_MULT = 1.3;
 export const ENRAGE_COOLDOWN_MULT = 0.65;
+/** Muerte Verdadera (boss phase 3) stacks on top of furia. */
+const FINAL_PHASE_SPEED_MULT = 1.15;
+const FINAL_PHASE_COOLDOWN_MULT = 0.8;
 
 export type DashState = "idle" | "windup" | "dashing";
 
@@ -39,9 +42,18 @@ export class Enemy {
   /** Next time this enemy drops a fire patch (def.fireTrail). */
   nextTrailAt = 0;
 
+  /** Position in def.abilityRotation. */
+  abilityIndex = 0;
+  /** Briefly tinted green after being healed by a Sacerdote. */
+  healFlashUntil = 0;
+
   // --- Furia (phase 2) ---
   enraged = false;
   private enrageEventPending = false;
+
+  // --- Muerte Verdadera (phase 3, def.finalPhaseAtHpPct) ---
+  finalPhase = false;
+  private finalPhaseEventPending = false;
 
   constructor(
     scene: Phaser.Scene,
@@ -172,10 +184,12 @@ export class Enemy {
     if (time < this.hitFlashUntil) {
       this.sprite.setTintFill(0xffffff);
     } else if (this.dashState === "windup" && Math.floor(time / 80) % 2 === 0) {
-      // Red strobe = "I'm about to charge".
-      this.sprite.setTintFill(0xff4040);
+    // Red strobe = "I'm about to charge".
+    this.sprite.setTintFill(0xff4040);
+      } else if (time < this.healFlashUntil) {
+    this.sprite.setTint(0x7dffb0);
     } else if (this.def.isBoss) {
-      this.sprite.setTint(this.enraged ? 0xff8080 : 0xffdca0);
+      this.sprite.setTint(this.finalPhase ? 0xc890ff : this.enraged ? 0xff8080 : 0xffdca0);
     } else if (this.def.tint) {
       this.sprite.setTint(this.def.tint);
     } else {
@@ -183,8 +197,15 @@ export class Enemy {
     }
   }
 
+  /** The ability this enemy will use next (rotation-aware). */
+  get currentAbility() {
+    const rotation = this.def.abilityRotation;
+    if (rotation && rotation.length > 0) return rotation[this.abilityIndex % rotation.length];
+    return this.def.ability;
+  }
+
   canUseAbility(time: number, distanceToPlayer: number): boolean {
-    if (!this.def.ability || !this.alive) return false;
+    if (!this.currentAbility || !this.alive) return false;
     // Never fire a special mid-charge — keeps boss patterns readable.
     if (this.dashState !== "idle") return false;
     if (time < this.nextAbilityAt) return false;
@@ -193,7 +214,11 @@ export class Enemy {
   }
 
   useAbility(time: number) {
-    const cooldown = (this.def.abilityCooldownMs ?? 1500) * (this.enraged ? ENRAGE_COOLDOWN_MULT : 1);
+    this.abilityIndex += 1;
+    const cooldown =
+      (this.def.abilityCooldownMs ?? 1500) *
+      (this.enraged ? ENRAGE_COOLDOWN_MULT : 1) *
+      (this.finalPhase ? FINAL_PHASE_COOLDOWN_MULT : 1);
     this.nextAbilityAt = time + cooldown * (0.9 + Math.random() * 0.2);
   }
 
@@ -210,10 +235,24 @@ export class Enemy {
 
   private checkEnrage() {
     const pct = this.def.enrageAtHpPct;
-    if (!pct || this.enraged || this.hp > this.maxHp * pct) return;
-    this.enraged = true;
-    this.speed *= ENRAGE_SPEED_MULT;
-    this.enrageEventPending = true;
+    if (pct && !this.enraged && this.hp <= this.maxHp * pct) {
+      this.enraged = true;
+      this.speed *= ENRAGE_SPEED_MULT;
+      this.enrageEventPending = true;
+    }
+    const finalPct = this.def.finalPhaseAtHpPct;
+    if (finalPct && !this.finalPhase && this.hp <= this.maxHp * finalPct) {
+      this.finalPhase = true;
+      this.speed *= FINAL_PHASE_SPEED_MULT;
+      this.finalPhaseEventPending = true;
+    }
+  }
+
+  /** True exactly once, the frame after entering phase 3. */
+  consumeFinalPhaseEvent(): boolean {
+    if (!this.finalPhaseEventPending) return false;
+    this.finalPhaseEventPending = false;
+    return true;
   }
 
   /** True exactly once, the frame after entering furia — GameScene uses

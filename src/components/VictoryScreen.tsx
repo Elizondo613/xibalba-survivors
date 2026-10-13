@@ -42,7 +42,7 @@ export default function VictoryScreen() {
       <div className="relative flex flex-col items-center gap-2">
         <Crown className="h-12 w-12 text-gold-light animate-flicker" />
         <h2 className="font-glyph text-3xl font-black uppercase tracking-[0.15em] text-gold-light sm:text-5xl">
-          {finalMap.name}: superada
+          {finalMap.victoryTitle ?? `${finalMap.name}: superada`}
         </h2>
         <p className="max-w-lg font-glyph text-sm leading-relaxed text-bone/70">{finalMap.clearText}</p>
       </div>

@@ -243,6 +243,64 @@ export const ENEMY_DEFS: Record<EnemyKind, EnemyDef> = {
     summon: { kind: "emberHound", count: 2, cooldownMs: 11000 },
     enrageAtHpPct: 0.5,
   },
+    deathPriest: {
+    kind: "deathPriest",
+    name: "Sacerdote de Hun-Camé",
+    texture: "tex-priest",
+    // Step up from the Sabueso (75 HP / 19 dmg). New role: SUPPORT.
+    // Keeps its distance, heals every enemy around it and fires death
+    // orbs — leave it alive and the whole horde (boss included) heals.
+    hp: 95,
+    speed: 72,
+    damage: 21,
+    xp: 22,
+    scale: 2.7,
+    radius: 14,
+    preferredRange: 260,
+    abilityRotation: ["healAura", "rangedLinear"],
+    abilityCooldownMs: 1600,
+    abilityRange: 420,
+    abilityDamage: 16,
+    fanCount: 1,
+    projectileSpeed: 250,
+    projectileTexture: "tex-deathorb",
+    healRadius: 200,
+    healPct: 0.15,
+  },
+  hunCame: {
+    kind: "hunCame",
+    name: "Hun-Camé, Señor de Xibalba",
+    texture: "tex-huncame",
+    // Final boss. Step up from Vucub-Camé (3800 HP / 40 dmg): ~60% more
+    // HP, brutal contact damage, rotates THREE attacks, charges,
+    // summons healers, and is the only boss with three phases
+    // (furia at 66%, "Muerte Verdadera" + darkness at 33%).
+    hp: 6000,
+    speed: 92,
+    damage: 55,
+    xp: 800,
+    scale: 5,
+    radius: 34,
+    isBoss: true,
+    abilityRotation: ["bladeRing", "groundBurst", "rangedLinear"],
+    abilityCooldownMs: 2000,
+    abilityRange: 700,
+    abilityDamage: 28,
+    ringCount: 12,
+    burstCount: 4,
+    fanCount: 5,
+    projectileSpeed: 270,
+    projectileTexture: "tex-deathorb",
+    burstRadius: 85,
+    burstDelayMs: 950,
+    burstColor: 0x8b5fbf,
+    burstLingerMs: 3000,
+    burstLingerDamage: 12,
+    dash: { cooldownMs: 4500, windupMs: 600, durationMs: 480, speed: 600, range: 520 },
+    summon: { kind: "deathPriest", count: 2, cooldownMs: 12000 },
+    enrageAtHpPct: 0.66,
+    finalPhaseAtHpPct: 0.33,
+  },
 };
 
 export const WEAPON_DEFS: Record<string, WeaponDef> = {
@@ -342,7 +400,13 @@ export const SPAWN_CAPS: Record<EnemyKind, number> = {
   chamiabac: 1,
   emberHound: 6,
   vucubCame: 1,
+  deathPriest: 4,
+  hunCame: 1,
 };
+
+/** Max fraction of a BOSS's max HP a single healAura pulse restores
+ * (regular enemies get the full healPct). */
+export const BOSS_HEAL_PCT_CAP = 0.02;
 
 export const INFINITE_BOSS_INTERVAL_SECONDS = 4 * 60;
 export const INFINITE_BOSS_TIER_STEP = 0.35;

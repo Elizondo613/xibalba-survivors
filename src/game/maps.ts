@@ -56,7 +56,19 @@ export const MAPS: MapDef[] = [
     eliteKind: "emberHound",
     groundTexture: "tex-ground-fuego",
     clearText:
-      "Vucub-Camé, Siete Muerte, se deshace en cenizas. Al fondo arde una puerta de obsidiana: la salida de Xibalba. Junto a ella espera Hun-Camé, sonriendo como quien ya conoce el final. Detrás de Yax, los pasos ya no se esconden. Continuará.",
+      "Vucub-Camé, Siete Muerte, se deshace en cenizas. Al fondo arde una puerta de obsidiana: la salida de Xibalba. Junto a ella espera Hun-Camé, sonriendo como quien ya conoce el final. Detrás de Yax, los pasos ya no se esconden.",
+  },
+    {
+    id: "puerta-xibalba",
+    name: "Puerta de Xibalba",
+    bossKind: "hunCame",
+    difficultyTier: 2.9,
+    eliteKind: "deathPriest",
+    groundTexture: "tex-ground-puerta",
+    mustDefeatBoss: true,
+    victoryTitle: "Escapaste de Xibalba",
+    clearText:
+      "Hun-Camé cae de rodillas y su risa se apaga como una vela. La puerta de obsidiana se abre: del otro lado huele a lluvia y a milpa. Yax da el último paso... y por primera vez, el silencio a sus espaldas es total. ¿Y si todo fue una trampa? Voltea. Sak Nikté está ahí, a un suspiro de la luz. Sus ojos se encuentran un instante — y ella se deshace en humo de copal. Yax vuelve al mundo de los vivos. Solo.",
   },
 ];
 
